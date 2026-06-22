@@ -15,11 +15,15 @@ The point: a model only knows what existed before its training cutoff. Skill3
 gathers what changed **after** that cutoff and bakes it into a skill the agent
 can load — so it stops emitting deprecated patterns.
 
-- **General** — no skill is hardcoded; freshness is driven by a cutoff *date*.
-- **Local-first** — synthesis runs on a local LLM (Ollama / any OpenAI-compatible
-  endpoint). The **only** external service is discovery (Brave Search).
-- **Cutoff-anchored** — the discovery search window starts at the target model's
-  knowledge cutoff, so results favour material the model doesn't already know.
+- **General** — no skill is hardcoded; the model plans the searches and freshness is
+  driven by a cutoff *date*, so it works for any topic (technical or not).
+- **Delta, not primer** — a generated skill covers only what changed *after* the
+  cutoff and tells the model to rely on existing knowledge for the rest.
+- **Local-first** — by default synthesis runs on a local LLM (Ollama), so the only
+  external service is discovery (Brave Search). A hosted provider (any
+  OpenAI-compatible gateway, or Claude via the native SDK) is opt-in.
+- **Cutoff-anchored** — the discovery window is bounded by the target model's cutoff
+  (below) and today (above), so results are the slice the model doesn't already know.
 - **Quality-gated** — the build runs Error Prone, PMD, SpotBugs and ArchUnit, and
   ships compile-time AI guardrails via [VibeTags](https://github.com/PIsberg/vibetags).
 
@@ -73,30 +77,42 @@ centred on protocol versioning and revision negotiation.
 
 ---
 
-## The pipeline: Brave → local LLM → SkillSpector
+## The pipeline: plan → Brave → synthesize → (verify) → vet
 
-Skill3 is a linear pipeline (`LearnPipeline`) with three external/local touch-points —
-**Brave** for discovery, a **local LLM** for synthesis, and **SkillSpector** for vetting:
+Skill3 is a linear pipeline (`LearnPipeline`). The synthesis model (local Ollama by
+default, or a hosted provider) is used at four points — to **plan** the searches, to
+**synthesize** the skill, optionally to **verify** it, and to **revise** it during
+vetting. **Brave** does discovery and **SkillSpector** does safety vetting.
 
 ```
-                 ┌──────────────────── Phase 1: Discovery & Retrieval ────────────────────┐
-  topic ───►  Brave Search API ──► (fallback) web scraper ──► extract dates ──► score authority
-                 └──────────────────────────────────────────────────────────────┬─────────┘
-                                                                                  │
-                 ┌──────────────── Phase 2: Ranking ──────────────┐              ▼
-                 │  freshness filter (anchored to model cutoff)    │   ranked ContextBundle
-                 │  cross-source consensus (prune lonely code)     │
+                 ┌──────── Phase 0: Plan (model) ─────────┐
+  topic + cutoff ►  QueryPlanner → N post-cutoff queries  │   topic-agnostic; no per-topic logic
+                 └──────────────────┬─────────────────────┘
+                                    ▼
+                 ┌──────────── Phase 1: Discovery & Retrieval ─────────────┐
+  per query ─► Brave Search ─► fetch pages (parallel) ─► extract dates ─► score authority
+                 └───────────────────────────────────────────┬───────────┘
+                                                              ▼
+                 ┌──────────────── Phase 2: Ranking ──────────────┐
+                 │  consensus (prune lonely code blocks)           │   ranked ContextBundle
+                 │  freshness: cutoff ≤ published ≤ today           │   (future-dated dropped)
+                 │  authoritative hosts ranked first               │
                  └──────────────────────────────┬─────────────────┘
                                                  ▼
-                 ┌──────── Phase 3: Synthesis (LOCAL) ────────┐
-                 │  local LLM drafts SKILL.md                  │
-                 │  deterministic post-processor guarantees    │   ← never trusts the model
-                 │  spec-compliant frontmatter                 │     for format compliance
+                 ┌──────── Phase 3: Synthesis (model) ────────┐
+                 │  model drafts a post-cutoff DELTA           │   ← post-processor, not the model,
+                 │  deterministic post-processor guarantees    │     guarantees the frontmatter
+                 │  spec-compliant frontmatter + footer        │
                  └──────────────────────┬─────────────────────┘
                                         ▼
-                 ┌──────── Phase 4: Vetting (LOCAL) ──────────┐
-                 │  SkillSpector static scan → findings        │
-                 │  self-correction loop revises until clean   │
+                 ┌──── Phase 3b: Verify (model, --verify) ────┐
+                 │  re-ground each claim against the sources;  │   optional accuracy gate
+                 │  demote future-dated releases to "planned"  │
+                 └──────────────────────┬─────────────────────┘
+                                        ▼
+                 ┌──────── Phase 4: Vetting (SkillSpector) ────┐
+                 │  static scan → findings                     │
+                 │  self-correction loop revises (bounded)     │
                  └──────────────────────┬─────────────────────┘
                                         ▼
                         skills/<topic>/SKILL.md  (+ index.html preview)
@@ -104,16 +120,18 @@ Skill3 is a linear pipeline (`LearnPipeline`) with three external/local touch-po
 
 | Stage | Component | Where | Notes |
 |---|---|---|---|
-| **Plan** | `QueryPlanner` (the synthesis model) | Local LLM | Topic-agnostic: the model expands the topic into several post-cutoff facet queries (it already knows the topic, so it knows what might have changed). No hardcoded per-topic logic. |
+| **Plan** | `QueryPlanner` (the synthesis model) | model | Topic-agnostic: the model expands the topic into up to 6 post-cutoff facet queries (it already knows the topic, so it knows what might have changed). No hardcoded per-topic logic. |
 | **Discover** | Brave Search API → web scraper fallback | Network | Runs every planned query (freshness-windowed); the only external service; needs an API key. |
 | **Fetch** | `RetrievalService` over virtual threads | Network | Merges/de-dupes URLs across queries, then fetches **concurrently** (one virtual thread per URL); results merged on the caller thread. |
-| **Date / authority** | `DateExtractor`, `AuthorityScorer` | Local | Per-host trust + published-date extraction. |
-| **Rank** | `FreshnessFilter`, `ConsensusValidator` | Local | Freshness is anchored to the model cutoff; code kept only with cross-source agreement. |
-| **Synthesize** | local LLM + `SkillMdPostProcessor` | Local | The post-processor — not the model — guarantees valid frontmatter. |
-| **Vet** | SkillSpector + `SelfCorrectionLoop` | Local | Re-drafts until the report is clean (bounded iterations). |
+| **Date / authority** | `DateExtractor`, `AuthorityScorer` | Local | Published-date extraction + per-host trust; `--authoritative` hosts rank first. |
+| **Rank** | `IngestionPipeline` (`ConsensusValidator`, `FreshnessFilter`) | Local | Code kept only with cross-source agreement; freshness anchored to the cutoff **and bounded above by today** (future-dated sources dropped). |
+| **Synthesize** | synthesis model + `SkillMdPostProcessor` | model + local | Model drafts a post-cutoff delta; the post-processor — not the model — guarantees valid frontmatter and stamps the footer. |
+| **Verify** *(opt-in)* | `Verifier` (`--verify`) | model | Re-grounds every claim against the sources; removes unsupported claims, demotes future-dated releases. Worthwhile only with a capable model. |
+| **Vet** | `SkillSpectorRunner` + `SelfCorrectionLoop` | Local | Static safety scan; re-drafts on findings (bounded iterations). "Clean" means safe, not necessarily accurate — hence Verify. |
 
-Only **Discover** leaves the machine. Synthesis, vetting, and the test suite are
-fully local.
+With the default **local** provider, only **Discover** leaves the machine — planning,
+synthesis, verification, and vetting are all local. Choosing `--llm-provider openai`
+or `anthropic` moves the model calls to a hosted endpoint.
 
 ---
 
@@ -201,6 +219,8 @@ Common options for `learn`:
 | `--max-tokens <n>` | Max output tokens for synthesis. | `8192` |
 | `--temperature <t>` | Sampling temperature (local/openai only). | server default |
 | `--rich-context` | Feed more sources/excerpts to the model (suits big-context models). | off |
+| `--authoritative <hosts>` | Comma-separated hosts ranked first (e.g. `modelcontextprotocol.io,github.com`). | — |
+| `--verify` | After synthesis, re-ground every claim against the sources (one extra model call). | off |
 | `--brave-key <key>` | Brave Search key (or `BRAVE_SEARCH_API_KEY`). | env |
 | `--output-dir <path>` | Where the skill is written. | `./skills/<skill-name>` |
 
@@ -264,6 +284,10 @@ its cutoff. Widen it for a given run with `--cutoff-time` (e.g. `--cutoff-time 2
 | **SpotBugs** (`6.5.8`, effort `Max`) | main classes | [`config/spotbugs-exclude.xml`](config/spotbugs-exclude.xml) |
 | **ArchUnit** (`1.4.0`) | layering / cycles | [`ArchitectureTest`](src/test/java/se/deversity/skill3/ArchitectureTest.java) |
 | **JSpecify** (`1.0.0`) | nullness | `@NullMarked` `package-info.java` per package |
+| **async-test-lib** (`1.7.0-RC1`) | concurrency stress tests (`@AsyncTest`) | [`ConcurrencySafetyTest`](src/test/java/se/deversity/skill3/ConcurrencySafetyTest.java) |
+
+Tests run on JUnit Jupiter 6; the hosted Claude provider uses the official
+`anthropic-java` SDK.
 
 ArchUnit keeps the layering honest: `model` is a dependency-free leaf, only the
 `Skill3App` composition root touches `cli`, and the sub-packages stay acyclic.

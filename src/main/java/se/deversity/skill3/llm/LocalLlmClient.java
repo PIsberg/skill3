@@ -3,6 +3,8 @@ package se.deversity.skill3.llm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.Nullable;
+import se.deversity.vibetags.annotations.AIPrivacy;
+import se.deversity.vibetags.annotations.AISecure;
 
 import java.io.IOException;
 import java.net.URI;
@@ -20,6 +22,7 @@ import java.util.Map;
  * such as OpenRouter/Together/Groq/OpenAI (Bearer key via {@code apiKey}).
  * Non-streaming for simplicity; the long read timeout accommodates slow generation.
  */
+@AISecure(aspect = "outbound LLM-provider credential (Bearer token) handling")
 public class LocalLlmClient implements ChatModel {
 
     private static final int DEFAULT_MAX_TOKENS = 4096;
@@ -29,6 +32,7 @@ public class LocalLlmClient implements ChatModel {
     private final HttpClient http;
     private final int maxTokens;
     /** Bearer token for hosted endpoints, or null for keyless local servers. */
+    @AIPrivacy(reason = "LLM provider API key — never log, echo, or include in errors/fixtures")
     private final @Nullable String apiKey;
     /** Sampling temperature, or null to use the server default. */
     private final @Nullable Double temperature;

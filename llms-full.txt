@@ -15,9 +15,16 @@ These files have specific context and focus areas for AI assistance.
 - **Focus**: Keep the cutoff TABLE small and sourced from published model documentation
 - **Avoid**: hardcoding per-skill logic; the cutoff is always overridable via --cutoff-time
 
+### se.deversity.skill3.pipeline.QueryPlanner
+- **Focus**: keep discovery topic-agnostic — the model plans the queries for any topic
+- **Avoid**: hardcoding per-topic search terms or a fixed query suffix like " documentation"
+
 
 ## PII / Privacy Guardrails
 Never include runtime values of the following elements in logs, console output, external API calls, test fixtures, or mock data.
+
+### se.deversity.skill3.llm.LocalLlmClient.apiKey
+- **Reason**: LLM provider API key — never log, echo, or include in errors/fixtures
 
 ### se.deversity.skill3.pipeline.BraveSearchClient.apiKey
 - **Reason**: Brave Search subscription token — never log, echo, or include in errors/fixtures
@@ -29,6 +36,10 @@ The following elements are well-tested core functionality. Make changes with ext
 ### se.deversity.skill3.llm.SkillMdPostProcessor
 - **Sensitivity**: High
 - **Note**: Deterministically guarantees SKILL.md spec compliance; model output is never trusted. Changes risk emitting invalid frontmatter — keep the parsing and frontmatter synthesis covered by SkillMdPostProcessorTest.
+
+### se.deversity.skill3.llm.Verifier
+- **Sensitivity**: High
+- **Note**: Accuracy gate that re-grounds claims against the sources. Only worthwhile with a capable model — a weak model rewrites rather than grounds. Keep the prompt strict about supported-claims-only and announced-vs-shipped.
 
 
 ## 🧵 Thread-Safe by Design
@@ -49,6 +60,14 @@ The following types are immutable. Never introduce non-final fields, setters, or
 
 ## 🔐 Security-Critical Code
 These elements are security-critical. Do not weaken security properties. Every change requires security review.
+
+### se.deversity.skill3.llm.AnthropicChatModel
+- Security-critical code (aspect: Anthropic API credential handling and hosted-provider network egress).
+- Never weaken security properties. Every change requires explicit security review.
+
+### se.deversity.skill3.llm.LocalLlmClient
+- Security-critical code (aspect: outbound LLM-provider credential (Bearer token) handling).
+- Never weaken security properties. Every change requires explicit security review.
 
 ### se.deversity.skill3.llm.NameSanitizer
 - Security-critical code (aspect: output sanitization: reserved-word stripping must never be weakened).

@@ -2,6 +2,7 @@ package se.deversity.skill3.llm;
 
 import se.deversity.skill3.model.ContextBundle;
 import se.deversity.skill3.model.Source;
+import se.deversity.vibetags.annotations.AICore;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -15,6 +16,10 @@ import java.util.List;
  * releases from "shipped" to "announced". The result still goes through the deterministic
  * post-processor, so format guarantees are preserved.
  */
+@AICore(sensitivity = "High",
+        note = "Accuracy gate that re-grounds claims against the sources. Only worthwhile with a "
+                + "capable model — a weak model rewrites rather than grounds. Keep the prompt strict "
+                + "about supported-claims-only and announced-vs-shipped.")
 public class Verifier {
 
     private static final int MAX_SOURCES = 20;

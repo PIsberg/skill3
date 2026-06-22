@@ -8,8 +8,15 @@
       <focus>Keep the cutoff TABLE small and sourced from published model documentation</focus>
       <avoids>hardcoding per-skill logic; the cutoff is always overridable via --cutoff-time</avoids>
     </file>
+    <file path="se.deversity.skill3.pipeline.QueryPlanner">
+      <focus>keep discovery topic-agnostic — the model plans the queries for any topic</focus>
+      <avoids>hardcoding per-topic search terms or a fixed query suffix like " documentation"</avoids>
+    </file>
   </contextual_instructions>
   <pii_guardrails>
+    <element path="se.deversity.skill3.llm.LocalLlmClient.apiKey">
+      <reason>LLM provider API key — never log, echo, or include in errors/fixtures</reason>
+    </element>
     <element path="se.deversity.skill3.pipeline.BraveSearchClient.apiKey">
       <reason>Brave Search subscription token — never log, echo, or include in errors/fixtures</reason>
     </element>
@@ -22,6 +29,10 @@
     <element path="se.deversity.skill3.llm.SkillMdPostProcessor">
       <sensitivity>High</sensitivity>
       <note>Deterministically guarantees SKILL.md spec compliance; model output is never trusted. Changes risk emitting invalid frontmatter — keep the parsing and frontmatter synthesis covered by SkillMdPostProcessorTest.</note>
+    </element>
+    <element path="se.deversity.skill3.llm.Verifier">
+      <sensitivity>High</sensitivity>
+      <note>Accuracy gate that re-grounds claims against the sources. Only worthwhile with a capable model — a weak model rewrites rather than grounds. Keep the prompt strict about supported-claims-only and announced-vs-shipped.</note>
     </element>
   </core_elements>
 
@@ -42,6 +53,12 @@
 
 <rule>Types listed in <immutable_types> are immutable by design. Never introduce non-final fields, setters, or methods that mutate instance state.</rule>
   <security_elements>
+    <element path="se.deversity.skill3.llm.AnthropicChatModel">
+      <aspect>Anthropic API credential handling and hosted-provider network egress</aspect>
+    </element>
+    <element path="se.deversity.skill3.llm.LocalLlmClient">
+      <aspect>outbound LLM-provider credential (Bearer token) handling</aspect>
+    </element>
     <element path="se.deversity.skill3.llm.NameSanitizer">
       <aspect>output sanitization: reserved-word stripping must never be weakened</aspect>
     </element>

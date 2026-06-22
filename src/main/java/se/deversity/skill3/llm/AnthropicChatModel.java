@@ -5,6 +5,7 @@ import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
+import se.deversity.vibetags.annotations.AISecure;
 
 import java.io.IOException;
 
@@ -16,6 +17,7 @@ import java.io.IOException;
  *
  * <p>Non-streaming: a {@code SKILL.md} fits comfortably under the {@code maxTokens} cap.
  */
+@AISecure(aspect = "Anthropic API credential handling and hosted-provider network egress")
 public class AnthropicChatModel implements ChatModel {
 
     private final AnthropicClient client;

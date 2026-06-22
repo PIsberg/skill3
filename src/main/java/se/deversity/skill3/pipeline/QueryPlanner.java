@@ -2,6 +2,7 @@ package se.deversity.skill3.pipeline;
 
 import se.deversity.skill3.llm.ChatModel;
 import se.deversity.skill3.model.Cutoff;
+import se.deversity.vibetags.annotations.AIContext;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -17,6 +18,9 @@ import java.util.regex.Pattern;
  * facets most likely to have changed after it — and this generalises to any topic
  * (a person, a protocol, a release) without hardcoded per-topic logic.
  */
+@AIContext(
+        focus = "keep discovery topic-agnostic — the model plans the queries for any topic",
+        avoids = "hardcoding per-topic search terms or a fixed query suffix like \" documentation\"")
 public class QueryPlanner {
 
     private static final int DEFAULT_MAX_QUERIES = 6;

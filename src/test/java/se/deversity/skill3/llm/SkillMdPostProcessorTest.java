@@ -43,6 +43,32 @@ class SkillMdPostProcessorTest {
     }
 
     @Test
+    void preservesScopedPackageInstructions() {
+        ContextBundle packageBundle = new ContextBundle(
+                "@xquik/tweetclaw", "claude-opus-4-8", new Cutoff(YearMonth.of(2026, 1), "test"),
+                List.of());
+        String raw = """
+                ---
+                name: @xquik/tweetclaw
+                description: A Skill for using TweetClaw from OpenClaw.
+                ---
+                # TweetClaw
+
+                Use TweetClaw when an OpenClaw workflow needs approval-gated X automation.
+
+                ```bash
+                npm install @xquik/tweetclaw
+                ```
+                """;
+        String out = SkillMdPostProcessor.render(raw, packageBundle, LocalDate.of(2026, 6, 22));
+
+        assertTrue(out.contains("name: xquik-tweetclaw"));
+        assertTrue(out.contains("# TweetClaw"));
+        assertTrue(out.contains("npm install @xquik/tweetclaw"));
+        assertFalse(out.contains("name: @xquik/tweetclaw"));
+    }
+
+    @Test
     void stripsWrappingCodeFence() {
         String raw = "```markdown\n---\nname: x\ndescription: hi\n---\n# H\nbody\n```";
         String out = SkillMdPostProcessor.render(raw, bundle, LocalDate.of(2026, 6, 22));

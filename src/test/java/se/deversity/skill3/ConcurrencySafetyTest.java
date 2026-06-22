@@ -9,6 +9,10 @@ import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.model.Source;
 import se.deversity.skill3.pipeline.AuthorityScorer;
 import se.deversity.skill3.pipeline.CutoffResolver;
+import se.deversity.skill3.pipeline.DateExtractor;
+import se.deversity.skill3.pipeline.PageFetcher;
+import se.deversity.skill3.pipeline.RetrievalService;
+import se.deversity.skill3.pipeline.SearchClient;
 import se.deversity.skill3.skillspector.SkillSpectorReport;
 import se.deversity.skill3.skillspector.SkillSpectorRunner;
 
@@ -98,6 +102,30 @@ class ConcurrencySafetyTest {
         List<String> args = WINDOWS ? List.of("/c", "echo", "{}") : List.of("-c", "echo {}");
         SkillSpectorReport report = new SkillSpectorRunner(exe, args).scan(Path.of("."));
         assertNotNull(report);
+    }
+
+    /**
+     * The parallel fan-out itself: {@link RetrievalService#retrieve} fetches every URL on its own
+     * virtual thread. Driven here by many concurrent callers (each spinning up its own executor) to
+     * prove the fan-out returns every source, in input order, with no loss/duplication/corruption.
+     */
+    @AsyncTest(threads = 6, invocations = 50, timeoutMs = 10000,
+            excludes = DetectorType.UNCOMMITTED_CHANGES)
+    void parallelRetrievalIsConsistentUnderConcurrency() throws Exception {
+        SearchClient search = (q, n) -> List.of(
+                "https://a.example/doc", "https://b.example/doc", "https://github.com/org/repo");
+        PageFetcher fetcher = url -> "<html><head><title>Doc</title></head><body>"
+                + "<pre>code for " + url + "</pre>"
+                + "<p>A sufficiently long paragraph of documentation about " + url + ".</p>"
+                + "</body></html>";
+        RetrievalService service = new RetrievalService(
+                search, fetcher, new DateExtractor(), new AuthorityScorer(Set.of()));
+
+        List<Source> sources = service.retrieve("topic", 5);
+
+        assertEquals(3, sources.size());
+        assertEquals("https://a.example/doc", sources.get(0).url);       // input order preserved
+        assertEquals("https://github.com/org/repo", sources.get(2).url);
     }
 
     @AsyncTest(threads = 8, invocations = 100, excludes = DetectorType.UNCOMMITTED_CHANGES)

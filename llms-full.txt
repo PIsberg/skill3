@@ -31,6 +31,14 @@ The following elements are well-tested core functionality. Make changes with ext
 - **Note**: Deterministically guarantees SKILL.md spec compliance; model output is never trusted. Changes risk emitting invalid frontmatter — keep the parsing and frontmatter synthesis covered by SkillMdPostProcessorTest.
 
 
+## 🧵 Thread-Safe by Design
+These elements are explicitly designed to be thread-safe via the named strategy. Preserve the synchronization invariant on every change.
+
+### se.deversity.skill3.pipeline.RetrievalService
+- **Strategy**: IMMUTABLE
+- **Note**: Collaborators (PageFetcher/HttpClient, DateExtractor, AuthorityScorer) are stateless/immutable; each fetch task builds its own Source and results are merged on the caller thread. Keep it that way — do not share mutable state between fetch tasks.
+
+
 ## ❄️ Immutable Types
 The following types are immutable. Never introduce non-final fields, setters, or mutating methods.
 

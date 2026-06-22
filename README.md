@@ -105,6 +105,7 @@ Skill3 is a linear pipeline (`LearnPipeline`) with three external/local touch-po
 | Stage | Component | Where | Notes |
 |---|---|---|---|
 | **Discover** | Brave Search API → web scraper fallback | Network | The only external service; needs an API key. |
+| **Fetch** | `RetrievalService` over virtual threads | Network | Pages are fetched **concurrently** (one virtual thread per URL); results merged on the caller thread, input order preserved. |
 | **Date / authority** | `DateExtractor`, `AuthorityScorer` | Local | Per-host trust + published-date extraction. |
 | **Rank** | `FreshnessFilter`, `ConsensusValidator` | Local | Freshness is anchored to the model cutoff; code kept only with cross-source agreement. |
 | **Synthesize** | local LLM + `SkillMdPostProcessor` | Local | The post-processor — not the model — guarantees valid frontmatter. |

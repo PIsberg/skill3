@@ -3,19 +3,35 @@ package se.deversity.skill3.pipeline;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jspecify.annotations.Nullable;
 import se.deversity.skill3.model.Source;
+import se.deversity.vibetags.annotations.AIThreadSafe;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Phase 1: discovery and retrieval. Searches for documentation, fetches each
  * page, and extracts text excerpts, code blocks, a publication date, and an
  * authority score into {@link Source} objects.
  *
+ * <p>The per-URL fetches run concurrently on virtual threads — they are blocking
+ * I/O and independent — while result aggregation happens on the calling thread, so
+ * no {@link Source} is ever shared between workers. Input order is preserved.
+ *
  * <p>The scraper "fallback" is realised by simply proceeding with whatever pages
  * were fetched; when too few usable sources are found the caller is warned.
  */
+@AIThreadSafe(strategy = AIThreadSafe.Strategy.IMMUTABLE,
+        note = "Collaborators (PageFetcher/HttpClient, DateExtractor, AuthorityScorer) are "
+                + "stateless/immutable; each fetch task builds its own Source and results are "
+                + "merged on the caller thread. Keep it that way — do not share mutable state "
+                + "between fetch tasks.")
 public class RetrievalService {
 
     private static final int MAX_EXCERPTS = 40;
@@ -34,27 +50,61 @@ public class RetrievalService {
     }
 
     /** {@return retrieved sources for {@code skillName}; may be empty} */
-    public List<Source> retrieve(String skillName, int maxResults) throws java.io.IOException {
+    public List<Source> retrieve(String skillName, int maxResults) throws IOException {
         List<String> urls = search.search(skillName + " documentation", maxResults);
+
+        // Fan out the blocking fetches over virtual threads; close() joins them all.
+        List<Future<FetchResult>> futures = new ArrayList<>(urls.size());
+        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (String url : urls) {
+                futures.add(pool.submit(() -> fetchOne(url)));
+            }
+        }
+
+        // Aggregate on this thread only — workers never touch shared state. Iterating the
+        // futures in submission order keeps the output deterministic (URL order in, order out).
         List<Source> sources = new ArrayList<>();
-        for (String url : urls) {
+        for (Future<FetchResult> future : futures) {
+            FetchResult result;
             try {
-                String html = fetcher.fetch(url);
-                Document doc = Jsoup.parse(html, url);
-                Source s = new Source(url);
-                s.title = doc.title();
-                s.published = dates.extract(doc);
-                s.authority = authority.score(url);
-                extractContent(doc, s);
-                if (!s.excerpts.isEmpty() || !s.codeBlocks.isEmpty()) {
-                    sources.add(s);
-                }
-            } catch (Exception e) {
-                // Skip unreachable / unparseable pages; discovery is best-effort.
-                System.err.println("  ! skipped " + url + " (" + e.getMessage() + ")");
+                result = future.get();
+            } catch (ExecutionException e) {
+                System.err.println("  ! fetch task failed: " + e.getCause());
+                continue;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Retrieval interrupted", e);
+            }
+            if (result.source() != null) {
+                sources.add(result.source());
+            } else if (result.skipMessage() != null) {
+                System.err.println("  ! " + result.skipMessage());
             }
         }
         return sources;
+    }
+
+    /** Outcome of one page fetch: a populated source, or a skip message — never both. */
+    private record FetchResult(@Nullable Source source, @Nullable String skipMessage) {
+    }
+
+    private FetchResult fetchOne(String url) {
+        try {
+            String html = fetcher.fetch(url);
+            Document doc = Jsoup.parse(html, url);
+            Source s = new Source(url);
+            s.title = doc.title();
+            s.published = dates.extract(doc);
+            s.authority = authority.score(url);
+            extractContent(doc, s);
+            if (!s.excerpts.isEmpty() || !s.codeBlocks.isEmpty()) {
+                return new FetchResult(s, null);
+            }
+            return new FetchResult(null, null); // fetched but no usable content
+        } catch (Exception e) {
+            // Skip unreachable / unparseable pages; discovery is best-effort.
+            return new FetchResult(null, "skipped " + url + " (" + e.getMessage() + ")");
+        }
     }
 
     static void extractContent(Document doc, Source s) {

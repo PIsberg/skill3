@@ -26,6 +26,14 @@
   </core_elements>
 
 <rule>Elements listed in <core_elements> are well-tested core components. Make changes with extreme caution and verify comprehensive test coverage before proposing modifications.</rule>
+  <thread_safe_elements>
+    <element path="se.deversity.skill3.pipeline.RetrievalService">
+      <strategy>IMMUTABLE</strategy>
+      <note>Collaborators (PageFetcher/HttpClient, DateExtractor, AuthorityScorer) are stateless/immutable; each fetch task builds its own Source and results are merged on the caller thread. Keep it that way — do not share mutable state between fetch tasks.</note>
+    </element>
+  </thread_safe_elements>
+
+<rule>Elements listed in <thread_safe_elements> are explicitly designed to be thread-safe via the named strategy. Any modification MUST preserve the synchronization invariant and document its reasoning in the change description.</rule>
   <immutable_types>
     <type path="se.deversity.skill3.model.ContextBundle">
       <note>Immutable record; the sources list is defensively copied in the compact constructor.</note>

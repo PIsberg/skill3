@@ -16,6 +16,9 @@ AI tools reading this file should respect the guardrails defined below. These ru
 ## 🧠 Core Functionality
 - [SkillMdPostProcessor](se.deversity.skill3.llm.SkillMdPostProcessor): Sensitivity: High. Note: Deterministically guarantees SKILL.md spec compliance; model output is never trusted. Changes risk emitting invalid frontmatter — keep the parsing and frontmatter synthesis covered by SkillMdPostProcessorTest.
 
+## 🧵 Thread-Safe by Design
+- [RetrievalService](se.deversity.skill3.pipeline.RetrievalService): Strategy: IMMUTABLE. Note: Collaborators (PageFetcher/HttpClient, DateExtractor, AuthorityScorer) are stateless/immutable; each fetch task builds its own Source and results are merged on the caller thread. Keep it that way — do not share mutable state between fetch tasks.
+
 ## ❄️ Immutable Types
 - [ContextBundle](se.deversity.skill3.model.ContextBundle): immutable type — Immutable record; the sources list is defensively copied in the compact constructor.
 

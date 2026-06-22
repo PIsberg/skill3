@@ -35,6 +35,22 @@ class RetrievalServiceTest {
     }
 
     @Test
+    void multiQueryMergesAndDedupesUrls() throws Exception {
+        SearchClient search = (q, n) -> q.contains("iran")
+                ? List.of("https://a/iran", "https://shared")
+                : List.of("https://b/tax", "https://shared");
+        PageFetcher fetcher = url -> "<html><head><title>D</title></head><body>"
+                + "<p>A sufficiently long paragraph of documentation text here.</p></body></html>";
+        RetrievalService service = new RetrievalService(
+                search, fetcher, new DateExtractor(), new AuthorityScorer(java.util.Set.of()));
+
+        List<Source> sources = service.retrieve(List.of("trump iran", "trump tax"), 5);
+
+        // "https://shared" appears in both queries but is fetched once -> 3 unique sources.
+        assertEquals(3, sources.size());
+    }
+
+    @Test
     void skipsPagesThatFailToFetch() throws Exception {
         SearchClient search = (q, n) -> List.of("https://broken");
         PageFetcher fetcher = url -> {

@@ -9,7 +9,9 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,10 +51,26 @@ public class RetrievalService {
         this.authority = authority;
     }
 
-    /** {@return retrieved sources for {@code skillName}; may be empty} */
+    /** {@return retrieved sources for the single default query {@code skillName documentation}} */
     public List<Source> retrieve(String skillName, int maxResults) throws IOException {
-        List<String> urls = search.search(skillName + " documentation", maxResults);
+        return fetchAll(search.search(skillName + " documentation", maxResults));
+    }
 
+    /**
+     * Runs every planned query, merges and de-duplicates the result URLs (preserving
+     * first-seen order), and fetches them concurrently.
+     *
+     * @return retrieved sources across all queries; may be empty
+     */
+    public List<Source> retrieve(List<String> queries, int maxResultsPerQuery) throws IOException {
+        Set<String> urls = new LinkedHashSet<>();
+        for (String query : queries) {
+            urls.addAll(search.search(query, maxResultsPerQuery));
+        }
+        return fetchAll(new ArrayList<>(urls));
+    }
+
+    private List<Source> fetchAll(List<String> urls) throws IOException {
         // Fan out the blocking fetches over virtual threads; close() joins them all.
         List<Future<FetchResult>> futures = new ArrayList<>(urls.size());
         try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {

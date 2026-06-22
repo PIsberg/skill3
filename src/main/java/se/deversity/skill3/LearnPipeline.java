@@ -10,6 +10,7 @@ import se.deversity.skill3.pipeline.AuthorityScorer;
 import se.deversity.skill3.pipeline.DateExtractor;
 import se.deversity.skill3.pipeline.IngestionPipeline;
 import se.deversity.skill3.pipeline.PageFetcher;
+import se.deversity.skill3.pipeline.QueryPlanner;
 import se.deversity.skill3.pipeline.RetrievalService;
 import se.deversity.skill3.pipeline.SearchClient;
 import se.deversity.skill3.skillspector.Finding;
@@ -67,12 +68,12 @@ public class LearnPipeline {
 
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
                          ChatModel model, SkillSpectorRunner spector) {
-        this(search, fetcher, dates, model, spector, 10, 2, 3, false);
+        this(search, fetcher, dates, model, spector, 5, 2, 3, false);
     }
 
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
                          ChatModel model, SkillSpectorRunner spector, boolean richContext) {
-        this(search, fetcher, dates, model, spector, 10, 2, 3, richContext);
+        this(search, fetcher, dates, model, spector, 5, 2, 3, richContext);
     }
 
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
@@ -101,7 +102,16 @@ public class LearnPipeline {
 
         RetrievalService retrieval = new RetrievalService(
                 search, fetcher, dates, new AuthorityScorer(Set.of()));
-        List<Source> sources = retrieval.retrieve(req.skillName(), maxResults);
+
+        // Ask the model what to search for — topic-agnostic, post-cutoff-focused.
+        List<String> queries = new QueryPlanner(model).plan(
+                req.skillName(), req.cutoff(), LocalDate.now(ZoneId.systemDefault()));
+        System.out.println("Planned " + queries.size() + " discovery queries:");
+        for (String q : queries) {
+            System.out.println("  - " + q);
+        }
+
+        List<Source> sources = retrieval.retrieve(queries, maxResults);
         if (sources.isEmpty()) {
             throw new IllegalStateException("No usable sources found.");
         }

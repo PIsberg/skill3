@@ -104,8 +104,9 @@ Skill3 is a linear pipeline (`LearnPipeline`) with three external/local touch-po
 
 | Stage | Component | Where | Notes |
 |---|---|---|---|
-| **Discover** | Brave Search API → web scraper fallback | Network | The only external service; needs an API key. |
-| **Fetch** | `RetrievalService` over virtual threads | Network | Pages are fetched **concurrently** (one virtual thread per URL); results merged on the caller thread, input order preserved. |
+| **Plan** | `QueryPlanner` (the synthesis model) | Local LLM | Topic-agnostic: the model expands the topic into several post-cutoff facet queries (it already knows the topic, so it knows what might have changed). No hardcoded per-topic logic. |
+| **Discover** | Brave Search API → web scraper fallback | Network | Runs every planned query (freshness-windowed); the only external service; needs an API key. |
+| **Fetch** | `RetrievalService` over virtual threads | Network | Merges/de-dupes URLs across queries, then fetches **concurrently** (one virtual thread per URL); results merged on the caller thread. |
 | **Date / authority** | `DateExtractor`, `AuthorityScorer` | Local | Per-host trust + published-date extraction. |
 | **Rank** | `FreshnessFilter`, `ConsensusValidator` | Local | Freshness is anchored to the model cutoff; code kept only with cross-source agreement. |
 | **Synthesize** | local LLM + `SkillMdPostProcessor` | Local | The post-processor — not the model — guarantees valid frontmatter. |
@@ -299,11 +300,15 @@ ecosystem docs, not a new protocol revision. ([`examples/SKILL-mcp.md`](examples
 is the older local-model run, hand-edited for accuracy — kept for the model-quality contrast.)
 
 **Current events — `claude-opus-4-8`** ([`examples/SKILL-trump-claude.md`](examples/SKILL-trump-claude.md)):
-proves the same machinery works for a non-technical topic — the two post-January-2026
-developments in the Trump classified-documents matter, drawn entirely from CNN/NBC/Axios
-articles dated 2026-03/04 (content the model cannot know), with "When to use" pointing the
-model back to its existing knowledge for the pre-cutoff background. The
-[local-model version](examples/SKILL-trump.md) is kept alongside it.
+proves the same machinery works for a non-technical topic. The `QueryPlanner` expanded
+`trump` into six facet queries (latest news, executive orders, tariffs, foreign policy, legal
+rulings, midterms), so the skill spans the full post-cutoff picture — the Iran war, the
+Venezuela strike, the Supreme Court striking down IEEPA tariffs and the Section 122/301/232
+pivot, ICE detention litigation, midterms — not just one story, all from sources dated after
+the cutoff. "When to use" points the model back to its existing knowledge for the baseline.
+The [local-model version](examples/SKILL-trump.md) is kept alongside it. (The
+[MCP Claude example](examples/SKILL-mcp-claude.md) predates query planning — a single query —
+and would broaden similarly if re-run.)
 - **Caveat:** these are *raw, unverified* model summaries of post-cutoff pages — included to
   demonstrate the pipeline, not as fact-checked references. Judge claims against the sources.
 

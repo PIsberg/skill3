@@ -37,7 +37,7 @@ public final class SkillMdPostProcessor {
     }
 
     public static String render(String raw, ContextBundle bundle, LocalDate learnedDate) {
-        String content = stripCodeFence(raw == null ? "" : raw.strip());
+        String content = unwrapFencedDocument(stripCodeFence(raw == null ? "" : raw.strip()));
         String frontmatter = "";
         String body = content;
 
@@ -235,6 +235,24 @@ public final class SkillMdPostProcessor {
             }
         }
         return String.join("\n", Arrays.copyOfRange(lines, from, lines.length)).strip();
+    }
+
+    /** A whole SKILL.md the model wrapped in a ```-fence after a chatty preamble. */
+    private static final Pattern FENCED_DOCUMENT = Pattern.compile(
+            "(?s)```[a-zA-Z0-9]*\\s*\\n(---\\s*\\n.*)\\n```");
+
+    /**
+     * Recovers a SKILL.md the model emitted inside a code fence preceded by commentary
+     * (e.g. a self-correction reply: "These are false positives, but here's the fix: ```...```").
+     * Only triggers when the content does not already start with frontmatter, so a normal
+     * document whose body contains code fences is never disturbed.
+     */
+    private static String unwrapFencedDocument(String content) {
+        if (content.startsWith("---")) {
+            return content;
+        }
+        Matcher m = FENCED_DOCUMENT.matcher(content);
+        return m.find() ? m.group(1).strip() : content;
     }
 
     private static String stripCodeFence(String raw) {

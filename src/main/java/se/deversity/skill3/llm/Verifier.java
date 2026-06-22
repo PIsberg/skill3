@@ -32,7 +32,8 @@ public class Verifier {
             - Keep the existing structure and these strict rules: exactly ONE --- YAML
               frontmatter block (name, description) then Markdown; never a second ---
               block; list each source in Sources as `- <url>`.
-            Output ONLY the corrected SKILL.md and nothing else.
+            Output ONLY the corrected SKILL.md beginning with `---` — no preamble,
+            no commentary, and no surrounding code fences.
             """;
 
     private final ChatModel model;

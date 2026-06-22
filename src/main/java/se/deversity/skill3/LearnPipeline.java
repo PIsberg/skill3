@@ -39,8 +39,10 @@ public class LearnPipeline {
 
     static final String FIX_SYSTEM = """
             You revise an Agent Skills SKILL.md to resolve security findings from a
-            scanner while keeping the content accurate and within scope. Return the
-            full corrected SKILL.md only.
+            scanner while keeping the content accurate and within scope. If a finding
+            is a false positive, still return the corrected SKILL.md — do not argue.
+            Output ONLY the raw SKILL.md beginning with `---`: no preamble, no
+            commentary, and no surrounding code fences.
             """;
 
     /** Inputs for one run. */

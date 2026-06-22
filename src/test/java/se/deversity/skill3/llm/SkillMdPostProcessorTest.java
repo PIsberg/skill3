@@ -212,6 +212,24 @@ class SkillMdPostProcessorTest {
     }
 
     @Test
+    void unwrapsSkillWrappedInCodeFenceAfterPreamble() {
+        // Observed from the self-correction loop: a chatty preamble + the real skill in a fence.
+        String raw = "The findings are false positives. I'll strengthen the wording anyway.\n\n"
+                + "```markdown\n"
+                + "---\nname: mcp\ndescription: A real one-sentence description of the skill.\n---\n"
+                + "## What changed\n\nMCP went stateless.\n\n```bash\necho hi\n```\n"
+                + "```\n";
+        String out = SkillMdPostProcessor.render(raw, bundle, LocalDate.of(2026, 6, 22));
+
+        assertFalse(out.contains("false positives"));            // preamble dropped
+        assertFalse(out.contains("description: \"The findings")); // not used as description
+        assertTrue(out.contains("name: mcp"));
+        assertTrue(out.contains("## What changed"));
+        assertTrue(out.contains("MCP went stateless."));
+        assertTrue(out.contains("echo hi"));                     // inner code block preserved
+    }
+
+    @Test
     void cleanBodyStripsMarkersAndAuthorityLines() {
         String body = "=== BEGIN X ===\nReal content here.\nAuthority: 0.5 | Post-Cutoff: false\n=== END X ===";
         String cleaned = SkillMdPostProcessor.cleanBody(body);

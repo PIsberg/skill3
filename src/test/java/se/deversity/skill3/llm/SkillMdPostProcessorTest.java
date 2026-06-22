@@ -167,6 +167,25 @@ class SkillMdPostProcessorTest {
     }
 
     @Test
+    void stampsAttributionFooter() {
+        String raw = "# MCP\n\nUse the _meta field on every request.";
+        String out = SkillMdPostProcessor.render(raw, bundle, LocalDate.of(2026, 6, 22));
+        assertTrue(out.contains(SkillMdPostProcessor.ATTRIBUTION));
+        assertTrue(out.contains("https://github.com/PIsberg/skill3"));
+    }
+
+    @Test
+    void attributionIsNotDuplicatedWhenReRendered() {
+        String raw = "# MCP\n\nUse the _meta field on every request.";
+        String once = SkillMdPostProcessor.render(raw, bundle, LocalDate.of(2026, 6, 22));
+        // The self-correction loop feeds render() its own previous output.
+        String twice = SkillMdPostProcessor.render(once, bundle, LocalDate.of(2026, 6, 22));
+        int first = twice.indexOf(SkillMdPostProcessor.ATTRIBUTION);
+        int last = twice.lastIndexOf(SkillMdPostProcessor.ATTRIBUTION);
+        assertEquals(first, last); // appears exactly once
+    }
+
+    @Test
     void cleanBodyStripsMarkersAndAuthorityLines() {
         String body = "=== BEGIN X ===\nReal content here.\nAuthority: 0.5 | Post-Cutoff: false\n=== END X ===";
         String cleaned = SkillMdPostProcessor.cleanBody(body);

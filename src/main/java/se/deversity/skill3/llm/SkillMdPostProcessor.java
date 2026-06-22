@@ -64,6 +64,8 @@ public final class SkillMdPostProcessor {
             body = "# " + bundle.skillName() + "\n\n## Overview\n\n" + description;
         }
 
+        body = withAttribution(body);
+
         return """
                 ---
                 name: %s
@@ -82,6 +84,26 @@ public final class SkillMdPostProcessor {
                 bundle.targetModel(),
                 bundle.cutoff().iso(),
                 body);
+    }
+
+    /** Provenance footer the generator stamps onto every skill. */
+    static final String ATTRIBUTION = "_Created with [skill3](https://github.com/PIsberg/skill3)._";
+
+    /**
+     * Appends the provenance footer, removing any prior copy first. {@code render()} is re-run by
+     * the self-correction loop on its own output, so this must be idempotent — exactly one footer,
+     * no matter how many times a draft is revised.
+     */
+    private static String withAttribution(String body) {
+        String b = body;
+        int marker = b.lastIndexOf("_Created with [skill3]");
+        if (marker >= 0) {
+            b = b.substring(0, marker).stripTrailing();
+            if (b.endsWith("---")) {
+                b = b.substring(0, b.length() - 3).stripTrailing();
+            }
+        }
+        return b + "\n\n---\n\n" + ATTRIBUTION;
     }
 
     static String sanitizeDescription(String raw) {

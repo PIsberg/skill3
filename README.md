@@ -29,6 +29,23 @@ See [docs/SPEC.md](docs/SPEC.md) for the full specification,
 
 ---
 
+## Why it matters: MCP versioning
+
+The cleanest illustration of the problem Skill3 solves is the **Model Context Protocol**.
+MCP revisions are **date-versioned** (`2024-11-05` → `2025-03-26` → `2025-06-18`), and the
+changes between them are not backward-compatible: a new HTTP transport, a required
+`MCP-Protocol-Version` header, removed JSON-RPC batching, new primitives like elicitation.
+
+A model trained before mid-2025 confidently emits the *old* protocol — wrong transport,
+missing header, assumptions that silently break real integrations. That's exactly the
+post-cutoff drift Skill3 targets: anchor discovery at the model's cutoff, pull what changed
+since, and bake it into a skill the agent loads.
+
+See the generated example: **[`examples/SKILL-mcp.md`](examples/SKILL-mcp.md)** — an MCP skill
+centred on protocol versioning and revision negotiation.
+
+---
+
 ## The pipeline: Brave → local LLM → SkillSpector
 
 Skill3 is a linear pipeline (`LearnPipeline`) with three external/local touch-points —
@@ -211,10 +228,18 @@ full annotation set.
 
 ## Example output
 
-[`examples/SKILL-json-rpc.md`](examples/SKILL-json-rpc.md) is a real skill produced
-by the pipeline — discovery seeded with the JSON-RPC spec + Wikipedia, synthesized
-locally, and vetted clean by SkillSpector: valid frontmatter, a proper
-one-sentence `description`, correct JSON-RPC 2.0 examples, and real source URLs.
+- [`examples/SKILL-json-rpc.md`](examples/SKILL-json-rpc.md) — a real skill produced
+  by the pipeline: discovery seeded with the JSON-RPC spec + Wikipedia, synthesized
+  locally, and vetted clean by SkillSpector (valid frontmatter, a proper one-sentence
+  `description`, correct JSON-RPC 2.0 examples, real source URLs).
+- [`examples/SKILL-mcp.md`](examples/SKILL-mcp.md) — an MCP skill centred on protocol
+  versioning. Produced by the pipeline, then **edited for technical accuracy** (a small
+  local synthesis model conflated unrelated tools); kept as the canonical illustration
+  of post-cutoff drift. Output quality scales with the synthesis model.
+
+Every generated skill ends with a provenance footer —
+`_Created with [skill3](https://github.com/PIsberg/skill3)._` — stamped deterministically
+by the generator (idempotently, even across self-correction revisions).
 
 The generated `SKILL.md` follows the
 [Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)

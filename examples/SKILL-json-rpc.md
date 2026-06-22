@@ -78,3 +78,7 @@ When client sends above `request` and server executes successfully squaring numb
 
 - [Source 1](https://en.wikipedia.org/wiki/JSON-RPC) - https://en.wikipedia.org/wiki/JSON-RPC
 - [Source 2](https://www.jsonrpc.org/specification) - https://www.jsonrpc.org/specification
+
+---
+
+_Created with [skill3](https://github.com/PIsberg/skill3)._

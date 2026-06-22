@@ -292,12 +292,13 @@ A skill3 output is a **delta**, not a primer: it covers only what changed *after
 model's cutoff and explicitly tells the model to rely on existing knowledge for the rest.
 
 **MCP — `claude-opus-4-8`** ([`examples/SKILL-mcp-claude.md`](examples/SKILL-mcp-claude.md)):
-leads with `## What changed` (GitHub MCP Registry, Claude Code's MCP Tool Search / channels /
-WebSocket transport, Cloudflare Code Mode and x402 paid tools) and states up front that the
-protocol fundamentals — JSON-RPC 2.0, transports, the three primitives — are unchanged and
-should not be re-explained. It even notes honestly that the post-cutoff sources are mostly
-ecosystem docs, not a new protocol revision. ([`examples/SKILL-mcp.md`](examples/SKILL-mcp.md)
-is the older local-model run, hand-edited for accuracy — kept for the model-quality contrast.)
+the `QueryPlanner`'s protocol-focused queries (spec release, roadmap, security) surface the
+actual changelog, so the skill is a true protocol delta — the **2026-07-28 stateless release
+candidate** (SEP-2567/2575 remove the session header and `initialize` handshake; new
+`Mcp-Method`/`Mcp-Name` headers; `ttlMs`/`cacheScope` caching), the SEP-2577 deprecation of
+Roots/Sampling/Logging, the 2026 roadmap, and 2026 CVEs — with the pre-cutoff fundamentals
+treated as already known. ([`examples/SKILL-mcp.md`](examples/SKILL-mcp.md) is the older
+local-model run, hand-edited for accuracy — kept for the model-quality contrast.)
 
 **Current events — `claude-opus-4-8`** ([`examples/SKILL-trump-claude.md`](examples/SKILL-trump-claude.md)):
 proves the same machinery works for a non-technical topic. The `QueryPlanner` expanded
@@ -306,9 +307,7 @@ rulings, midterms), so the skill spans the full post-cutoff picture — the Iran
 Venezuela strike, the Supreme Court striking down IEEPA tariffs and the Section 122/301/232
 pivot, ICE detention litigation, midterms — not just one story, all from sources dated after
 the cutoff. "When to use" points the model back to its existing knowledge for the baseline.
-The [local-model version](examples/SKILL-trump.md) is kept alongside it. (The
-[MCP Claude example](examples/SKILL-mcp-claude.md) predates query planning — a single query —
-and would broaden similarly if re-run.)
+The [local-model version](examples/SKILL-trump.md) is kept alongside it.
 - **Caveat:** these are *raw, unverified* model summaries of post-cutoff pages — included to
   demonstrate the pipeline, not as fact-checked references. Judge claims against the sources.
 

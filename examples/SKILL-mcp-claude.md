@@ -1,6 +1,6 @@
 ---
 name: mcp
-description: "Covers post-2026-01 MCP ecosystem additions including the GitHub MCP Registry, Claude Code's MCP Tool Search and channel push messages, Cloudflare's Code Mode and MCP governance, and x402 paid MCP tools; use when working with newer MCP client/server features."
+description: "Covers the MCP 2026-07-28 stateless release candidate (SEP-2567/2575/2577 breaking changes, new headers, Tasks/MCP Apps extensions, deprecations), the priority-area 2026 roadmap, and the 2026 CVE/security incidents — use when working on MCP servers, clients, or transports after January 2026."
 metadata:
   version: 1.0.0
   learned-date: 2026-06-22
@@ -9,79 +9,108 @@ metadata:
 ---
 ## What changed
 
-The sources marked as post-cutoff contain mostly ecosystem documentation rather than protocol-level changes. The core MCP architecture (JSON-RPC 2.0 over stdio or Streamable HTTP, the initialize/notification session lifecycle, tools/resources/prompts primitives, host/client/server roles) is unchanged from what you already know. The material new-or-emphasized items below are scoped to specific platforms; treat them as platform features, not protocol revisions.
+The largest revision of MCP since launch is the **2026-07-28 specification release candidate**, published as an RC ahead of the final spec dated **July 28, 2026**. It contains breaking changes. The headline: MCP becomes **stateless at the protocol layer**. The prior shipped spec was **2025-11-25**; no new version was cut between then and the RC.
 
-### GitHub MCP Registry
-GitHub now lists an **MCP Registry** ("New") in its platform navigation, positioned as a way to "integrate external tools." This is presented as a discovery surface for MCP servers within the GitHub platform. (Details beyond its existence are not provided by the sources.)
+### Stateless protocol (breaking)
 
-### Claude Code MCP features
-Claude Code documentation now describes several capabilities to be aware of:
+Six SEPs combine to deliver statelessness; two are the core removals:
 
-| Feature | Purpose |
+| Area | 2025-11-25 | 2026-07-28 RC |
+|---|---|---|
+| Session | `Mcp-Session-Id` header + protocol-level session (server-issued, pins client to one instance) | Removed (SEP-2567); any request can hit any instance |
+| Handshake | `initialize`/`initialized` exchange negotiates protocol version, client info, capabilities once per session | Removed (SEP-2575); those values travel in `_meta` on **every** request |
+| Capability discovery | Obtained during handshake | New `server/discover` method fetches server capabilities on demand |
+| Routing | Required sticky sessions, shared session store, deep packet inspection of JSON-RPC body | Plain round-robin load balancer; route on headers |
+
+A `tools/call` is now a single self-contained request that any server instance can handle. The practical effect: a remote server that previously needed sticky sessions and a shared session store can run behind an ordinary round-robin load balancer.
+
+**Protocol state ≠ application state.** If your server needs cross-call state (shopping cart, browser session, running deployment), you mint an explicit handle and have the model pass it back as a regular tool argument — the application manages it, the way any HTTP API does. State becomes an explicit, visible handle rather than hidden in a protocol session.
+
+### New required headers
+
+Every Streamable HTTP request must now include:
+
+- `Mcp-Method` — e.g. `tools/call` (the operation)
+- `Mcp-Name` — the name of the tool or resource
+
+This lets load balancers, gateways, and rate limiters route on the operation without buffering/parsing the JSON-RPC body (cheaper L7 routing). **Servers are required to reject requests where the headers and body disagree** (integrity check).
+
+### Standardized client-side caching (new)
+
+`tools/list`, `resources/list`, and `resources/read` responses now carry **`ttlMs`** and **`cacheScope`** fields. Clients learn how long a list is fresh and whether it is safe to share across users, cutting redundant polling.
+
+### Authorization
+
+The RC aligns authorization more closely with **OAuth and OpenID Connect** deployments, and introduces a **formal deprecation policy** (see below).
+
+### Extensions framework
+
+- **Tasks** graduates from an experimental primitive (originally SEP-1686) to a **first-class extension** for long-running work (CI pipelines, batch processing, human-in-the-loop approvals). Servers return a task handle; clients poll with `tasks/get`. Roadmap-noted gaps being closed: retry semantics on transient failure and result expiry/retention policy.
+- **MCP Apps** (server-rendered interactive HTML UIs rendered in sandboxed iframes inside Claude, ChatGPT, VS Code, and Goose) landed in January 2026 and is now officially part of the extensions framework.
+
+### 2026 roadmap (March 2026, lead maintainer David Soria Parra)
+
+The roadmap dropped release-milestone framing for **four priority areas** driven by Working/Interest Groups, which now drive timelines. SEPs in these areas get expedited review:
+
+1. **Transport evolution and scalability** — stateless/horizontal-scaling transport plus **MCP Server Cards**: structured server metadata served via a `.well-known` URL so registries/crawlers discover capabilities without a live connection. **Explicitly: no new official transports this cycle** — the existing Streamable HTTP transport is being evolved.
+2. **Agent communication** — Tasks lifecycle, agent-to-agent tool-level primitives (note: Google's A2A handles higher-level inter-agent coordination), streaming/progressive results.
+3. **Governance maturation** — a documented **contributor ladder** (community participant → WG contributor → facilitator → lead maintainer → core maintainer) and delegation so trusted Working Groups accept SEPs in their domain without full core review.
+4. **Enterprise readiness** — audit trails, SSO-integrated auth, gateway behavior, config portability; least-defined, expected to land mostly as **extensions** rather than core changes. A dedicated Enterprise WG did not yet exist as of the roadmap.
+
+### Ecosystem scale (post-cutoff figures)
+
+TypeScript + Python SDKs reached **~97 million monthly downloads** (March 2026, up from ~2M at launch); **9,400–10,000+ public servers**; Claude reportedly processes **over 1 billion tool calls/month** via MCP. The AAIF held the **MCP Dev Summit North America** in New York City in April 2026 (~1,200 attendees).
+
+## Deprecated or removed
+
+Under the new **Feature Lifecycle Policy** (stages: Active → Deprecated → Removed, with **at least 12 months between each**), SEP-2577 marks the following **deprecated** in the RC. They still work today and cannot be removed for at least a year:
+
+| Capability | Replacement guidance |
 |---|---|
-| MCP Tool Search ("Scale with MCP Tool Search") | Defers tool loading so large tool sets scale; server authors can configure tool search or exempt a server from deferral |
-| Push messages with channels | Servers can push messages to Claude Code via channels |
-| Dynamic tool updates | Tools can update at runtime without reconnect |
-| Automatic reconnection | Client auto-reconnects to servers |
-| Remote WebSocket server (Option 4) | Adds a WebSocket transport option alongside remote HTTP, remote SSE, and local stdio |
-| MCP output limits and warnings | Per-tool output limits can be raised individually |
-| OAuth controls | Fixed OAuth callback port, pre-configured OAuth credentials, override OAuth metadata discovery, restrict OAuth scopes, dynamic headers for custom auth |
-| MCP resources / prompts | Reference MCP resources; use MCP prompts as commands |
-| Plugin-provided MCP servers | MCP servers can be supplied by plugins |
-| claude.ai connectors | Use MCP servers from Claude.ai; option to disable claude.ai connectors |
+| Roots | Explicit mechanisms: tool parameters, resource URIs, or server configuration |
+| Logging | `stderr` for stdio transports; OpenTelemetry for structured observability |
+| Sampling | Servers should make **direct LLM provider API calls** instead of piggybacking on the client's LLM (cleaner separation of concerns) — the migration with the most friction |
 
-Installation scopes are local, project, and user, with a defined scope hierarchy/precedence and environment-variable expansion supported in `.mcp.json`.
-
-### Cloudflare Agents MCP additions
-Cloudflare's Agents docs expose an MCP API surface and several newer concepts:
-- APIs: `createMcpHandler`, `McpAgent`, `McpClient`.
-- **Code Mode** and **MCP governance** are listed as distinct protocol/operational topics.
-- **MCP server portals** for Cloudflare.
-- **x402** agentic payments, including **Charge for MCP tools** and an **MPP (Machine Payments Protocol)** — paying for tool invocations from the Agents SDK or coding tools.
-
-### Other ecosystem notes
-- Roo Code documents transports as **STDIO, Streamable HTTP, and legacy SSE**, explicitly framing SSE as legacy in favor of Streamable HTTP.
-- Microsoft Learn MCP Server is a remote, no-auth, free, Streamable-HTTP server for searching/fetching official docs; it returns 405 on browser access and refreshes incrementally (full refresh daily). Updates tracked via its Release Notes.
+Removed at the protocol layer in the RC: the `Mcp-Session-Id` header / protocol-level session (SEP-2567) and the `initialize`/`initialized` handshake (SEP-2575).
 
 ## When to use
 
-Use this skill when you are configuring or building MCP integrations on Claude Code, Cloudflare Agents, VS Code, Roo Code, or Vercel after early 2026, and need the platform-specific features (Tool Search, channels, Code Mode, x402 paid tools, the GitHub MCP Registry) that postdate your training. Do not use it as an MCP primer — the protocol fundamentals are unchanged.
+Use this when building or operating MCP servers/clients after January 2026 — especially when designing for horizontal scaling, migrating off sessions/handshake/Roots/Sampling/Logging, configuring gateways for the new headers, planning around the deprecation timeline, or assessing the 2026 security incident landscape.
 
 ## Examples
 
-Add a remote WebSocket MCP server in Claude Code (Option 4, newer transport choice alongside HTTP/SSE/stdio):
-```
-# Claude Code supports four install transports:
-# remote HTTP, remote SSE, local stdio, and remote WebSocket
-```
+**Migration checklist for the RC (before final spec, July 28, 2026):**
+- Stop relying on `Mcp-Session-Id`; move any cross-call state into explicit handles passed as tool arguments.
+- Drop the `initialize`/`initialized` flow; send protocol version, client info, and capabilities in `_meta` on each request; call `server/discover` when you need server capabilities up front.
+- Add `Mcp-Method` and `Mcp-Name` headers to every Streamable HTTP request; ensure the server rejects header/body mismatches.
+- Honor `ttlMs`/`cacheScope` on `tools/list`, `resources/list`, `resources/read` to cache and reduce polling.
+- Replace Roots, Sampling, Logging usage per the table above — they still work, but plan within the ≥12-month lifecycle window.
+- Reconfigure gateways: a plain round-robin load balancer with header-based L7 routing replaces sticky sessions, shared session stores, and JSON-RPC body inspection.
 
-Context7 invocation patterns (still current usage):
-```
-How do I set up Next.js 14 middleware? use context7
-```
-```
-Implement basic authentication with Supabase. use library /supabase/supabase for API and docs.
-```
-```
-npx ctx7 setup
-```
-
-Connect to the Microsoft Learn MCP Server (remote, Streamable HTTP, no authentication required) from an MCP client such as VS Code, Visual Studio, or MCP Inspector. Note that browser access returns `405 Method Not Allowed`.
-
-Cloudflare paid MCP tools via x402: charge for individual MCP tool invocations and pay from the Agents SDK or coding tools using the MPP (Machine Payments Protocol) flow described in the Cloudflare Agentic Payments docs.
+**Security hardening (2026 incidents):**
+- Scan for exposed endpoints: query `/mcp` and `/sse` and check for `0.0.0.0` bindings (e.g., Snyk's `mcp-scan`). Trend Micro found 492 MCP servers exposed with zero authentication.
+- Rotate credentials in agent config files (`.claude/settings.json` and similar plaintext configs); pin and review MCP server package versions; block auto-approval of MCP servers.
+- Update **Claude Code to 2.0.65+** — patches CVE-2025-59536 and CVE-2026-21852.
+- Patch **Microsoft MCP servers** for **CVE-2026-26118** (CVSS 8.8, fixed in the March 10, 2026 Patch Tuesday; tool-hijacking risk, no confirmed exploitation reported).
+- Treat AI agent infrastructure as a supply-chain dependency; add behavioral monitoring of agent action sequences (static analysis misses sequence-level exfiltration chains).
 
 ## Sources
 
-- https://developers.cloudflare.com/agents/model-context-protocol/
-- https://docs.roocode.com/features/mcp/overview
-- https://www.webfuse.com/mcp-cheat-sheet
-- https://code.visualstudio.com/docs/agent-customization/mcp-servers
-- https://github.com/modelcontextprotocol
-- https://github.com/upstash/context7
-- https://github.com/modelcontextprotocol/modelcontextprotocol
-- https://vercel.com/docs/mcp
-- https://learn.microsoft.com/en-us/training/support/mcp
-- https://code.claude.com/docs/en/mcp
+- https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/
+- https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+- https://byteiota.com/mcp-goes-stateless-2026-release-candidate/
+- https://aaif.io/blog/mcp-is-growing-up/
+- https://thenewstack.io/model-context-protocol-roadmap-2026/
+- https://toloka.ai/blog/the-future-of-mcp-enterprise-adoption/
+- https://www.getknit.dev/blog/the-future-of-mcp-roadmap-enhancements-and-whats-next
+- https://www.taskade.com/blog/mcp-servers
+- https://truto.one/blog/what-is-an-mcp-server-the-2026-architecture-guide-for-saas-pms/
+- https://en.wikipedia.org/wiki/Model_Context_Protocol
+- https://blog.cyberdesserts.com/ai-agent-security-risks/
+- https://www.pointguardai.com/ai-security-incidents/microsoft-mcp-server-vulnerability-opens-door-to-ai-tool-hijacking-cve-2026-26118
+- https://dev.to/piiiico/mcp-security-vulnerabilities-in-2026-40-cves-and-counting-4pco
+- https://www.digitalapplied.com/blog/ai-agent-protocol-ecosystem-map-2026-mcp-a2a-acp-ucp
+- https://aimagazine.com/globenewswire/3312626
 
 ---
 

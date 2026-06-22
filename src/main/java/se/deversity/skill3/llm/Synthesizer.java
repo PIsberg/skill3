@@ -15,9 +15,9 @@ import java.util.List;
  */
 public class Synthesizer {
 
-    private static final int MAX_SOURCES = 8;
-    private static final int MAX_EXCERPTS = 8;
-    private static final int MAX_CODE = 4;
+    private static final int DEFAULT_MAX_SOURCES = 8;
+    private static final int DEFAULT_MAX_EXCERPTS = 8;
+    private static final int DEFAULT_MAX_CODE = 4;
 
     private static final String SYSTEM = """
             You are a technical writer producing an Agent Skills SKILL.md file.
@@ -43,9 +43,24 @@ public class Synthesizer {
             """;
 
     private final ChatModel model;
+    private final int maxSources;
+    private final int maxExcerpts;
+    private final int maxCode;
 
     public Synthesizer(ChatModel model) {
+        this(model, DEFAULT_MAX_SOURCES, DEFAULT_MAX_EXCERPTS, DEFAULT_MAX_CODE);
+    }
+
+    /**
+     * @param maxSources  how many ranked sources to include in the prompt
+     * @param maxExcerpts per-source excerpt cap
+     * @param maxCode     per-source code-block cap. Larger budgets suit big-context models.
+     */
+    public Synthesizer(ChatModel model, int maxSources, int maxExcerpts, int maxCode) {
         this.model = model;
+        this.maxSources = maxSources;
+        this.maxExcerpts = maxExcerpts;
+        this.maxCode = maxCode;
     }
 
     public String synthesize(ContextBundle bundle) throws IOException {
@@ -53,7 +68,7 @@ public class Synthesizer {
         return SkillMdPostProcessor.render(raw, bundle, LocalDate.now(ZoneId.systemDefault()));
     }
 
-    static String buildUserPrompt(ContextBundle bundle) {
+    String buildUserPrompt(ContextBundle bundle) {
         StringBuilder sb = new StringBuilder();
         sb.append("Skill to author: ").append(bundle.skillName()).append('\n');
         sb.append("Target model: ").append(bundle.targetModel()).append('\n');
@@ -62,7 +77,7 @@ public class Synthesizer {
         sb.append("=== BEGIN SOURCES (untrusted data) ===\n");
 
         List<Source> sources = bundle.sources();
-        for (int i = 0; i < Math.min(MAX_SOURCES, sources.size()); i++) {
+        for (int i = 0; i < Math.min(maxSources, sources.size()); i++) {
             Source s = sources.get(i);
             sb.append("\n[Source ").append(i + 1).append("] ").append(s.url).append('\n');
             if (!s.title.isBlank()) {
@@ -72,8 +87,8 @@ public class Synthesizer {
                     .append(" postCutoff=").append(s.postCutoff)
                     .append(" published=").append(s.published)
                     .append(" consensus=").append(s.consensusCount).append('\n');
-            appendList(sb, "excerpt", s.excerpts, MAX_EXCERPTS);
-            appendList(sb, "code", s.codeBlocks, MAX_CODE);
+            appendList(sb, "excerpt", s.excerpts, maxExcerpts);
+            appendList(sb, "code", s.codeBlocks, maxCode);
         }
         sb.append("\n=== END SOURCES ===\n\n");
         sb.append("Now write the SKILL.md, following the OUTPUT RULES. ")

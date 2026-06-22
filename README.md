@@ -193,12 +193,43 @@ Common options for `learn`:
 | `--target-model <id>` | Model the skill is *for*; used only to look up a knowledge cutoff. | `claude-opus-4-8` |
 | `--cutoff-time <yyyy-MM>` | Explicit cutoff override (wins over `--target-model`). | — |
 | `--strict-cutoff` | Hard-exclude sources at/before the cutoff. | off |
-| `--llm-model <name>` | Local synthesis model. | **required** |
-| `--llm-endpoint <url>` | OpenAI-compatible endpoint. | `http://localhost:11434` |
+| `--llm-model <name>` | Synthesis model name. | **required** |
+| `--llm-provider <p>` | `local` \| `openai` \| `anthropic`. | `local` |
+| `--llm-endpoint <url>` | OpenAI-compatible endpoint (local/openai). | `http://localhost:11434` |
+| `--llm-key <key>` | Key for hosted providers (`openai`: `LLM_API_KEY`; `anthropic`: `ANTHROPIC_API_KEY`). | env |
+| `--max-tokens <n>` | Max output tokens for synthesis. | `8192` |
+| `--temperature <t>` | Sampling temperature (local/openai only). | server default |
+| `--rich-context` | Feed more sources/excerpts to the model (suits big-context models). | off |
 | `--brave-key <key>` | Brave Search key (or `BRAVE_SEARCH_API_KEY`). | env |
 | `--output-dir <path>` | Where the skill is written. | `./skills/<skill-name>` |
 
 Output: `./skills/<skill-name>/SKILL.md` (+ an `index.html` preview).
+
+### Choosing a synthesis model
+
+Synthesis is the quality bottleneck (see the examples below — the *same* sources, very
+different skills). Three providers, in order of fidelity to the local-first design:
+
+1. **Bigger local model (default, keeps the no-key design).** Just pull a stronger Ollama
+   model — no code, no key:
+   ```bash
+   ./gradlew run --args="learn mcp --llm-model qwen2.5-coder:32b --brave-key $BRAVE_SEARCH_API_KEY"
+   ```
+2. **Any OpenAI-compatible gateway** (OpenRouter, Together, Groq, …) — opt-in, breaks the
+   no-key property only when you use it:
+   ```bash
+   ./gradlew run --args="learn mcp --llm-provider openai \
+     --llm-endpoint https://openrouter.ai/api --llm-model <model> \
+     --llm-key $LLM_API_KEY --rich-context --brave-key $BRAVE_SEARCH_API_KEY"
+   ```
+3. **Claude (native Anthropic SDK)** — highest quality. Uses the official
+   `anthropic-java` SDK and the Messages API (not an OpenAI shim):
+   ```bash
+   export ANTHROPIC_API_KEY=sk-ant-...
+   ./gradlew run --args="learn mcp --llm-provider anthropic \
+     --llm-model claude-opus-4-8 --rich-context --brave-key $BRAVE_SEARCH_API_KEY"
+   ```
+   `--temperature` is ignored for `anthropic` (Opus 4.8 rejects sampling parameters).
 
 ### How the cutoff drives the search window
 
@@ -256,21 +287,28 @@ full annotation set.
 
 ## Example output
 
-- [`examples/SKILL-json-rpc.md`](examples/SKILL-json-rpc.md) — a real skill produced
-  by the pipeline: discovery seeded with the JSON-RPC spec + Wikipedia, synthesized
-  locally, and vetted clean by SkillSpector (valid frontmatter, a proper one-sentence
-  `description`, correct JSON-RPC 2.0 examples, real source URLs).
-- [`examples/SKILL-mcp.md`](examples/SKILL-mcp.md) — an MCP skill centred on protocol
-  versioning. Produced by the pipeline, then **edited for technical accuracy** (a small
-  local synthesis model conflated unrelated tools); kept as the canonical illustration
-  of post-cutoff drift. Output quality scales with the synthesis model.
-- [`examples/SKILL-trump.md`](examples/SKILL-trump.md) — a **non-technical** demo proving
-  the same machinery works for current events. It answers "what has the US president been
-  up to since the model's 2026-01 cutoff?" entirely from post-cutoff web sources Brave
-  surfaced (CNN/NBC articles dated 2026-03 and 2026-04 — content the model itself cannot
-  know). **Caveat:** this is *raw, unverified* output from a small local model
-  summarising those pages; it is included to demonstrate the pipeline, not as a
-  fact-checked reference. Judge the claims against the linked sources, not the summary.
+**MCP — local vs Claude, same sources.** A side-by-side of why the synthesis model matters:
+- [`examples/SKILL-mcp.md`](examples/SKILL-mcp.md) — local model output, **hand-edited for
+  accuracy** (the small model conflated unrelated tools).
+- [`examples/SKILL-mcp-claude.md`](examples/SKILL-mcp-claude.md) — **unedited** output from
+  `claude-opus-4-8` (`--llm-provider anthropic`) over the *same* discovered sources: correct
+  Nov-2024 origin, client/server architecture, stdio vs Streamable HTTP, JSON-RPC 2.0, the
+  three primitives — and it correctly treats Context7 as a documentation MCP server instead
+  of inventing it as "the MCP API".
+
+**Current events — non-technical, post-cutoff.** Both answer "what has the US president been
+up to since the model's 2026-01 cutoff?" entirely from post-cutoff web sources Brave surfaced
+(CNN/NBC/Axios articles dated 2026-03/04 — content the model itself cannot know):
+- [`examples/SKILL-trump.md`](examples/SKILL-trump.md) — local model.
+- [`examples/SKILL-trump-claude.md`](examples/SKILL-trump-claude.md) — `claude-opus-4-8`; far
+  more careful (frames every claim as a contested allegation, includes the DOJ/White House
+  rebuttals, attributes each source).
+- **Caveat (both):** *raw, unverified* model summaries of those pages — included to
+  demonstrate the pipeline on a non-technical topic, not as a fact-checked reference. Judge
+  the claims against the linked sources.
+
+- [`examples/SKILL-json-rpc.md`](examples/SKILL-json-rpc.md) — an earlier locally-synthesized
+  skill, vetted clean by SkillSpector.
 
 Every generated skill ends with a provenance footer —
 `_Created with [skill3](https://github.com/PIsberg/skill3)._` — stamped deterministically

@@ -62,15 +62,28 @@ public class LearnPipeline {
     private final int maxResults;
     private final int minAgreement;
     private final int maxIterations;
+    /** Feed more sources/excerpts to the synthesizer — worthwhile for big-context models. */
+    private final boolean richContext;
 
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
                          ChatModel model, SkillSpectorRunner spector) {
-        this(search, fetcher, dates, model, spector, 10, 2, 3);
+        this(search, fetcher, dates, model, spector, 10, 2, 3, false);
+    }
+
+    public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
+                         ChatModel model, SkillSpectorRunner spector, boolean richContext) {
+        this(search, fetcher, dates, model, spector, 10, 2, 3, richContext);
     }
 
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
                          ChatModel model, SkillSpectorRunner spector,
                          int maxResults, int minAgreement, int maxIterations) {
+        this(search, fetcher, dates, model, spector, maxResults, minAgreement, maxIterations, false);
+    }
+
+    public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
+                         ChatModel model, SkillSpectorRunner spector,
+                         int maxResults, int minAgreement, int maxIterations, boolean richContext) {
         this.search = search;
         this.fetcher = fetcher;
         this.dates = dates;
@@ -79,6 +92,7 @@ public class LearnPipeline {
         this.maxResults = maxResults;
         this.minAgreement = minAgreement;
         this.maxIterations = maxIterations;
+        this.richContext = richContext;
     }
 
     public Result run(Request req) throws IOException {
@@ -100,7 +114,10 @@ public class LearnPipeline {
 
         ContextBundle bundle = new ContextBundle(
                 req.skillName(), req.targetModel(), req.cutoff(), ranked);
-        String skillMd = new Synthesizer(model).synthesize(bundle);
+        Synthesizer synthesizer = richContext
+                ? new Synthesizer(model, 20, 20, 8)
+                : new Synthesizer(model);
+        String skillMd = synthesizer.synthesize(bundle);
         Files.writeString(skillFile, skillMd);
 
         boolean vetted = false;

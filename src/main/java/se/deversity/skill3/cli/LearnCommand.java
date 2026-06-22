@@ -4,6 +4,8 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import se.deversity.skill3.LearnPipeline;
+import se.deversity.skill3.llm.AnthropicChatModel;
+import se.deversity.skill3.llm.ChatModel;
 import se.deversity.skill3.llm.LocalLlmClient;
 import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.pipeline.BraveSearchClient;
@@ -17,6 +19,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Locale;
 import java.util.concurrent.Callable;
 
 /** Runs the full relearn pipeline for one skill (thin CLI over {@link LearnPipeline}). */
@@ -38,12 +41,32 @@ public class LearnCommand implements Callable<Integer> {
     @Option(names = "--strict-cutoff", description = "Exclude sources at/before the cutoff.")
     boolean strictCutoff;
 
-    @Option(names = "--llm-model", required = true, description = "Local synthesis model name.")
+    @Option(names = "--llm-model", required = true, description = "Synthesis model name.")
     String llmModel;
 
+    @Option(names = "--llm-provider", defaultValue = "local",
+            description = "Synthesis provider: local | openai | anthropic. Default: ${DEFAULT-VALUE}")
+    String llmProvider;
+
     @Option(names = "--llm-endpoint", defaultValue = "http://localhost:11434",
-            description = "OpenAI-compatible endpoint. Default: ${DEFAULT-VALUE}")
+            description = "OpenAI-compatible endpoint (local/openai). Default: ${DEFAULT-VALUE}")
     String llmEndpoint;
+
+    @Option(names = "--llm-key",
+            description = "API key for hosted providers (openai: env LLM_API_KEY; anthropic: env ANTHROPIC_API_KEY).")
+    String llmKey;
+
+    @Option(names = "--max-tokens", defaultValue = "8192",
+            description = "Max output tokens for synthesis. Default: ${DEFAULT-VALUE}")
+    int maxTokens;
+
+    @Option(names = "--temperature",
+            description = "Sampling temperature (local/openai only; ignored for anthropic).")
+    Double temperature;
+
+    @Option(names = "--rich-context",
+            description = "Feed more sources/excerpts to the model (suits big-context models).")
+    boolean richContext;
 
     @Option(names = "--brave-key", description = "Brave Search key (or env BRAVE_SEARCH_API_KEY).")
     String braveKey;
@@ -73,15 +96,43 @@ public class LearnCommand implements Callable<Integer> {
         String freshness = cutoff.freshnessRange(LocalDate.now(ZoneId.systemDefault()));
         System.out.println("Search window: " + freshness);
 
+        final ChatModel chat;
+        String provider = llmProvider == null ? "local" : llmProvider.toLowerCase(Locale.ROOT);
+        switch (provider) {
+            case "anthropic" -> {
+                String akey = llmKey != null ? llmKey : System.getenv("ANTHROPIC_API_KEY");
+                if (akey == null || akey.isBlank()) {
+                    System.err.println("anthropic provider needs a key: pass --llm-key or set ANTHROPIC_API_KEY.");
+                    return 2;
+                }
+                chat = new AnthropicChatModel(akey, llmModel, maxTokens);
+            }
+            case "openai" -> {
+                String okey = llmKey != null ? llmKey : System.getenv("LLM_API_KEY");
+                if (okey == null || okey.isBlank()) {
+                    System.err.println("openai provider needs a key: pass --llm-key or set LLM_API_KEY.");
+                    return 2;
+                }
+                chat = new LocalLlmClient(llmEndpoint, llmModel, maxTokens, okey, temperature);
+            }
+            case "local" -> chat = new LocalLlmClient(llmEndpoint, llmModel, maxTokens, llmKey, temperature);
+            default -> {
+                System.err.println("Unknown --llm-provider '" + provider + "' (use local | openai | anthropic).");
+                return 2;
+            }
+        }
+
         LearnPipeline pipeline = new LearnPipeline(
                 new BraveSearchClient(key, freshness),
                 new HttpPageFetcher(),
                 new DateExtractor(),
-                new LocalLlmClient(llmEndpoint, llmModel),
-                new SkillSpectorRunner(Venv.bin("skillspector").toString()));
+                chat,
+                new SkillSpectorRunner(Venv.bin("skillspector").toString()),
+                richContext);
 
         try {
-            System.out.println("Discovering and synthesizing '" + skillName + "' with " + llmModel + "...");
+            System.out.println("Discovering and synthesizing '" + skillName + "' with "
+                    + provider + ":" + llmModel + "...");
             LearnPipeline.Result res = pipeline.run(
                     new LearnPipeline.Request(skillName, targetModel, cutoff, strictCutoff, outDir));
 

@@ -23,6 +23,10 @@ dependencies {
     implementation 'org.jsoup:jsoup:1.18.1'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 
+    // Native Anthropic SDK for the optional hosted Claude synthesis provider. Local-first
+    // stays the default; this is only used with --llm-provider anthropic.
+    implementation 'com.anthropic:anthropic-java:2.34.0'
+
     // JSpecify nullness annotations (@NullMarked on package-info, @Nullable on APIs).
     // CLASS-retention, so compile-only is enough — nothing is needed at runtime.
     compileOnly 'org.jspecify:jspecify:1.0.0'

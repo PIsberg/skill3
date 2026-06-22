@@ -332,6 +332,9 @@ Venezuela strike, the Supreme Court striking down IEEPA tariffs and the Section 
 pivot, ICE detention litigation, midterms — not just one story, all from sources dated after
 the cutoff. "When to use" points the model back to its existing knowledge for the baseline.
 The [local-model version](examples/SKILL-trump.md) is kept alongside it.
+
+![Why the Trump demo is honest: with a 2026-01 cutoff, the only legitimate way to produce SKILL-trump.md is to run the real pipeline — Brave fetches post-cutoff sources, the local LLM synthesizes them, no current events fabricated from memory.](assets/trump-demo-note.png)
+
 - **Caveat:** these are *raw, unverified* model summaries of post-cutoff pages — included to
   demonstrate the pipeline, not as fact-checked references. Judge claims against the sources.
 

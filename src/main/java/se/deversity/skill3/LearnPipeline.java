@@ -3,6 +3,7 @@ package se.deversity.skill3;
 import se.deversity.skill3.llm.ChatModel;
 import se.deversity.skill3.llm.SkillMdPostProcessor;
 import se.deversity.skill3.llm.Synthesizer;
+import se.deversity.skill3.llm.Verifier;
 import se.deversity.skill3.model.ContextBundle;
 import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.model.Source;
@@ -55,6 +56,18 @@ public class LearnPipeline {
         }
     }
 
+    /** Tunable run settings; defaults preserve the original local-first behaviour. */
+    public record Options(int maxResults, int minAgreement, int maxIterations,
+                          boolean richContext, Set<String> authoritativeHosts, boolean verify) {
+        public Options {
+            authoritativeHosts = Set.copyOf(authoritativeHosts);
+        }
+
+        public static Options defaults() {
+            return new Options(5, 2, 3, false, Set.of(), false);
+        }
+    }
+
     private final SearchClient search;
     private final PageFetcher fetcher;
     private final DateExtractor dates;
@@ -65,47 +78,62 @@ public class LearnPipeline {
     private final int maxIterations;
     /** Feed more sources/excerpts to the synthesizer — worthwhile for big-context models. */
     private final boolean richContext;
+    /** Hosts treated as authoritative (score 1.0) during discovery ranking. */
+    private final Set<String> authoritativeHosts;
+    /** Run the accuracy gate (re-ground claims against the sources) after synthesis. */
+    private final boolean verify;
 
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
                          ChatModel model, SkillSpectorRunner spector) {
-        this(search, fetcher, dates, model, spector, 5, 2, 3, false);
+        this(search, fetcher, dates, model, spector, Options.defaults());
     }
 
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
                          ChatModel model, SkillSpectorRunner spector, boolean richContext) {
-        this(search, fetcher, dates, model, spector, 5, 2, 3, richContext);
+        this(search, fetcher, dates, model, spector,
+                new Options(5, 2, 3, richContext, Set.of(), false));
     }
 
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
                          ChatModel model, SkillSpectorRunner spector,
                          int maxResults, int minAgreement, int maxIterations) {
-        this(search, fetcher, dates, model, spector, maxResults, minAgreement, maxIterations, false);
+        this(search, fetcher, dates, model, spector,
+                new Options(maxResults, minAgreement, maxIterations, false, Set.of(), false));
     }
 
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
                          ChatModel model, SkillSpectorRunner spector,
                          int maxResults, int minAgreement, int maxIterations, boolean richContext) {
+        this(search, fetcher, dates, model, spector,
+                new Options(maxResults, minAgreement, maxIterations, richContext, Set.of(), false));
+    }
+
+    public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
+                         ChatModel model, SkillSpectorRunner spector, Options options) {
         this.search = search;
         this.fetcher = fetcher;
         this.dates = dates;
         this.model = model;
         this.spector = spector;
-        this.maxResults = maxResults;
-        this.minAgreement = minAgreement;
-        this.maxIterations = maxIterations;
-        this.richContext = richContext;
+        this.maxResults = options.maxResults();
+        this.minAgreement = options.minAgreement();
+        this.maxIterations = options.maxIterations();
+        this.richContext = options.richContext();
+        this.authoritativeHosts = options.authoritativeHosts();
+        this.verify = options.verify();
     }
 
     public Result run(Request req) throws IOException {
         Files.createDirectories(req.outputDir());
         Path skillFile = req.outputDir().resolve("SKILL.md");
 
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+
         RetrievalService retrieval = new RetrievalService(
-                search, fetcher, dates, new AuthorityScorer(Set.of()));
+                search, fetcher, dates, new AuthorityScorer(authoritativeHosts));
 
         // Ask the model what to search for — topic-agnostic, post-cutoff-focused.
-        List<String> queries = new QueryPlanner(model).plan(
-                req.skillName(), req.cutoff(), LocalDate.now(ZoneId.systemDefault()));
+        List<String> queries = new QueryPlanner(model).plan(req.skillName(), req.cutoff(), today);
         System.out.println("Planned " + queries.size() + " discovery queries:");
         for (String q : queries) {
             System.out.println("  - " + q);
@@ -116,8 +144,9 @@ public class LearnPipeline {
             throw new IllegalStateException("No usable sources found.");
         }
 
-        List<Source> ranked =
-                new IngestionPipeline(req.cutoff(), req.strictCutoff(), minAgreement).ingest(sources);
+        // Upper-bounded by today: future-dated sources are dropped, not ranked.
+        List<Source> ranked = new IngestionPipeline(req.cutoff(), req.strictCutoff(), minAgreement, today)
+                .ingest(sources);
         if (ranked.isEmpty()) {
             throw new IllegalStateException("All sources filtered out (try without --strict-cutoff).");
         }
@@ -128,6 +157,13 @@ public class LearnPipeline {
                 ? new Synthesizer(model, 20, 20, 8)
                 : new Synthesizer(model);
         String skillMd = synthesizer.synthesize(bundle);
+
+        if (verify) {
+            System.out.println("Verifying claims against sources...");
+            skillMd = SkillMdPostProcessor.render(
+                    new Verifier(model).verify(skillMd, bundle, today), bundle, today);
+        }
+
         Files.writeString(skillFile, skillMd);
 
         boolean vetted = false;

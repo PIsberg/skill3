@@ -68,6 +68,14 @@ public class LearnCommand implements Callable<Integer> {
             description = "Feed more sources/excerpts to the model (suits big-context models).")
     boolean richContext;
 
+    @Option(names = "--authoritative", split = ",",
+            description = "Comma-separated authoritative hosts ranked first (e.g. modelcontextprotocol.io,github.com).")
+    java.util.List<String> authoritative;
+
+    @Option(names = "--verify",
+            description = "After synthesis, re-ground every claim against the sources (one extra model call).")
+    boolean verify;
+
     @Option(names = "--brave-key", description = "Brave Search key (or env BRAVE_SEARCH_API_KEY).")
     String braveKey;
 
@@ -122,13 +130,19 @@ public class LearnCommand implements Callable<Integer> {
             }
         }
 
+        java.util.Set<String> authoritativeHosts = authoritative == null
+                ? java.util.Set.of()
+                : java.util.Set.copyOf(authoritative);
+        LearnPipeline.Options options =
+                new LearnPipeline.Options(5, 2, 3, richContext, authoritativeHosts, verify);
+
         LearnPipeline pipeline = new LearnPipeline(
                 new BraveSearchClient(key, freshness),
                 new HttpPageFetcher(),
                 new DateExtractor(),
                 chat,
                 new SkillSpectorRunner(Venv.bin("skillspector").toString()),
-                richContext);
+                options);
 
         try {
             System.out.println("Discovering and synthesizing '" + skillName + "' with "

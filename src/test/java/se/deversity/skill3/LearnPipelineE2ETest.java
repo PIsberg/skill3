@@ -118,6 +118,21 @@ class LearnPipelineE2ETest {
     }
 
     @Test
+    void verifyPassRunsAndStillProducesSkill(@TempDir Path dir) throws Exception {
+        Map<String, String> pages = Map.of("https://a.com/doc", page("2026-05-01", "x();"));
+
+        // verify=true triggers the accuracy gate (a second model call); the fake handles both.
+        LearnPipeline pipeline = new LearnPipeline(
+                search("https://a.com/doc"), fetcher(pages), new DateExtractor(), model(), null,
+                new LearnPipeline.Options(5, 2, 3, false, java.util.Set.of(), true));
+
+        LearnPipeline.Result res = pipeline.run(request(dir, false));
+
+        assertTrue(Files.exists(res.skillFile()));
+        assertTrue(Files.readString(res.skillFile()).startsWith("---"));
+    }
+
+    @Test
     void emptySearchResultsThrows(@TempDir Path dir) {
         LearnPipeline pipeline = new LearnPipeline(
                 search(), fetcher(Map.of()), new DateExtractor(), model(), null);

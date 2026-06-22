@@ -3,6 +3,7 @@ package se.deversity.skill3.pipeline;
 import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.model.Source;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -13,6 +14,10 @@ import java.util.List;
  * recency weight. Sorting by the combined score realizes the override rule: a
  * post-cutoff authoritative source (1.0 x 1.0) always outranks pre-cutoff content
  * (<= 1.0 x 0.5). With {@code strict}, pre-cutoff and undated sources are dropped.
+ *
+ * <p>An upper bound ({@code today}) drops sources published after the run date —
+ * Brave's freshness window is only a hint, and a future-dated page is a leak or a
+ * mis-dated source, never legitimate evidence for "what changed by today".
  */
 public class FreshnessFilter {
 
@@ -22,16 +27,25 @@ public class FreshnessFilter {
 
     private final Cutoff cutoff;
     private final boolean strict;
+    private final LocalDate today;
 
     public FreshnessFilter(Cutoff cutoff, boolean strict) {
+        this(cutoff, strict, LocalDate.MAX);
+    }
+
+    public FreshnessFilter(Cutoff cutoff, boolean strict, LocalDate today) {
         this.cutoff = cutoff;
         this.strict = strict;
+        this.today = today;
     }
 
     /** Scores, optionally filters, and returns sources sorted best-first. */
     public List<Source> apply(List<Source> sources) {
         List<Source> out = new ArrayList<>();
         for (Source s : sources) {
+            if (s.published != null && s.published.isAfter(today)) {
+                continue; // future-dated -> freshness leak or mis-dated; not valid evidence
+            }
             s.postCutoff = s.published != null
                     && s.published.isAfter(cutoff.month().atEndOfMonth());
             s.recencyWeight = recency(s);

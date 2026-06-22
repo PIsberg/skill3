@@ -59,6 +59,18 @@ class FreshnessFilterTest {
     }
 
     @Test
+    void dropsSourcesDatedAfterToday() {
+        LocalDate today = LocalDate.of(2026, 6, 22);
+        Source valid = source("https://a", 1.0, LocalDate.of(2026, 5, 1));
+        Source future = source("https://b", 1.0, LocalDate.of(2026, 7, 28)); // after the run date
+
+        List<Source> out = new FreshnessFilter(cutoff, false, today).apply(List.of(valid, future));
+
+        assertEquals(1, out.size());
+        assertEquals("https://a", out.get(0).url);
+    }
+
+    @Test
     void cutoffMonthItselfCountsAsPreCutoff() {
         Source s = source("https://a", 1.0, LocalDate.of(2026, 1, 15));
         new FreshnessFilter(cutoff, false).apply(List.of(s));

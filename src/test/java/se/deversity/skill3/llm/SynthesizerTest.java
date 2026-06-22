@@ -25,7 +25,7 @@ class SynthesizerTest {
     @Test
     void userPromptContainsDelimitedSources() {
         ChatModel fake = (system, user) -> "";
-        String prompt = new Synthesizer(fake).buildUserPrompt(bundle());
+        String prompt = new Synthesizer(fake).buildUserPrompt(bundle(), java.time.LocalDate.of(2026, 6, 22));
         assertTrue(prompt.contains("BEGIN SOURCES"));
         assertTrue(prompt.contains("https://modelcontextprotocol.io/spec"));
         assertTrue(prompt.contains("_meta"));

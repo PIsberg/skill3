@@ -287,25 +287,25 @@ full annotation set.
 
 ## Example output
 
-**MCP — local vs Claude, same sources.** A side-by-side of why the synthesis model matters:
-- [`examples/SKILL-mcp.md`](examples/SKILL-mcp.md) — local model output, **hand-edited for
-  accuracy** (the small model conflated unrelated tools).
-- [`examples/SKILL-mcp-claude.md`](examples/SKILL-mcp-claude.md) — **unedited** output from
-  `claude-opus-4-8` (`--llm-provider anthropic`) over the *same* discovered sources: correct
-  Nov-2024 origin, client/server architecture, stdio vs Streamable HTTP, JSON-RPC 2.0, the
-  three primitives — and it correctly treats Context7 as a documentation MCP server instead
-  of inventing it as "the MCP API".
+A skill3 output is a **delta**, not a primer: it covers only what changed *after* the target
+model's cutoff and explicitly tells the model to rely on existing knowledge for the rest.
 
-**Current events — non-technical, post-cutoff.** Both answer "what has the US president been
-up to since the model's 2026-01 cutoff?" entirely from post-cutoff web sources Brave surfaced
-(CNN/NBC/Axios articles dated 2026-03/04 — content the model itself cannot know):
-- [`examples/SKILL-trump.md`](examples/SKILL-trump.md) — local model.
-- [`examples/SKILL-trump-claude.md`](examples/SKILL-trump-claude.md) — `claude-opus-4-8`; far
-  more careful (frames every claim as a contested allegation, includes the DOJ/White House
-  rebuttals, attributes each source).
-- **Caveat (both):** *raw, unverified* model summaries of those pages — included to
-  demonstrate the pipeline on a non-technical topic, not as a fact-checked reference. Judge
-  the claims against the linked sources.
+**MCP — `claude-opus-4-8`** ([`examples/SKILL-mcp-claude.md`](examples/SKILL-mcp-claude.md)):
+leads with `## What changed` (GitHub MCP Registry, Claude Code's MCP Tool Search / channels /
+WebSocket transport, Cloudflare Code Mode and x402 paid tools) and states up front that the
+protocol fundamentals — JSON-RPC 2.0, transports, the three primitives — are unchanged and
+should not be re-explained. It even notes honestly that the post-cutoff sources are mostly
+ecosystem docs, not a new protocol revision. ([`examples/SKILL-mcp.md`](examples/SKILL-mcp.md)
+is the older local-model run, hand-edited for accuracy — kept for the model-quality contrast.)
+
+**Current events — `claude-opus-4-8`** ([`examples/SKILL-trump-claude.md`](examples/SKILL-trump-claude.md)):
+proves the same machinery works for a non-technical topic — the two post-January-2026
+developments in the Trump classified-documents matter, drawn entirely from CNN/NBC/Axios
+articles dated 2026-03/04 (content the model cannot know), with "When to use" pointing the
+model back to its existing knowledge for the pre-cutoff background. The
+[local-model version](examples/SKILL-trump.md) is kept alongside it.
+- **Caveat:** these are *raw, unverified* model summaries of post-cutoff pages — included to
+  demonstrate the pipeline, not as fact-checked references. Judge claims against the sources.
 
 - [`examples/SKILL-json-rpc.md`](examples/SKILL-json-rpc.md) — an earlier locally-synthesized
   skill, vetted clean by SkillSpector.

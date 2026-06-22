@@ -1,0 +1,59 @@
+<!-- VIBETAGS-START -->
+# Skill3 — AI Guardrail Rules
+> Complete AI guardrail configuration generated from source annotations by VibeTags.
+
+This document contains the full set of AI guardrail rules for this project. AI tools with large context windows (such as Windsurf Cascade, Claude 4.6, or Gemini 1.5 Pro) may load this file directly instead of fetching individual documentation pages.
+
+## Locked Files (Do Not Edit)
+The following files are locked. AI tools MUST NOT propose modifications to them.
+
+
+## Contextual Rules
+These files have specific context and focus areas for AI assistance.
+
+### se.deversity.skill3.pipeline.CutoffResolver
+- **Focus**: Keep the cutoff TABLE small and sourced from published model documentation
+- **Avoid**: hardcoding per-skill logic; the cutoff is always overridable via --cutoff-time
+
+
+## PII / Privacy Guardrails
+Never include runtime values of the following elements in logs, console output, external API calls, test fixtures, or mock data.
+
+### se.deversity.skill3.pipeline.BraveSearchClient.apiKey
+- **Reason**: Brave Search subscription token — never log, echo, or include in errors/fixtures
+
+
+## 🧠 Core Functionality
+The following elements are well-tested core functionality. Make changes with extreme caution.
+
+### se.deversity.skill3.llm.SkillMdPostProcessor
+- **Sensitivity**: High
+- **Note**: Deterministically guarantees SKILL.md spec compliance; model output is never trusted. Changes risk emitting invalid frontmatter — keep the parsing and frontmatter synthesis covered by SkillMdPostProcessorTest.
+
+
+## ❄️ Immutable Types
+The following types are immutable. Never introduce non-final fields, setters, or mutating methods.
+
+### se.deversity.skill3.model.ContextBundle
+- Immutable type — never introduce non-final fields, setters, or mutating methods.
+- **Note**: Immutable record; the sources list is defensively copied in the compact constructor.
+
+
+## 🔐 Security-Critical Code
+These elements are security-critical. Do not weaken security properties. Every change requires security review.
+
+### se.deversity.skill3.llm.NameSanitizer
+- Security-critical code (aspect: output sanitization: reserved-word stripping must never be weakened).
+- Never weaken security properties. Every change requires explicit security review.
+
+### se.deversity.skill3.pipeline.BraveSearchClient
+- Security-critical code (aspect: external-API credential handling and the only network egress with a secret token).
+- Never weaken security properties. Every change requires explicit security review.
+
+
+## Deterministic Pure Functions
+The following elements must remain pure functions without side effects or mutations.
+
+### se.deversity.skill3.llm.NameSanitizer.sanitize(java.lang.String)
+- **Requirement**: Mathematically pure function. No side effects.
+<!-- VIBETAGS-END -->

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs exclusion filter for Skill3.
+  Excludes intentional patterns that are not genuine bugs. Add a <Match> with a
+  comment explaining WHY each exclusion is justified.
+-->
+<FindBugsFilter>
+
+  <!-- VA_FORMAT_STRING_USES_NEWLINE: SkillMdPostProcessor.render() builds the SKILL.md text
+       with literal '\n'. This is intentional and must NOT become the platform-dependent %n —
+       a generated Markdown file has to use LF line endings deterministically on every OS. -->
+  <Match>
+    <Class name="se.deversity.skill3.llm.SkillMdPostProcessor"/>
+    <Method name="render"/>
+    <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+  </Match>
+
+</FindBugsFilter>

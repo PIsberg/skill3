@@ -1,0 +1,114 @@
+import com.github.spotbugs.snom.Effort
+import com.github.spotbugs.snom.Confidence
+
+plugins {
+    id 'application'
+    id 'jacoco'
+    id 'pmd'
+    id 'com.github.spotbugs' version '6.5.8'
+    id 'net.ltgt.errorprone' version '5.1.0'
+}
+
+group = 'se.deversity'
+version = '0.1.0'
+
+ext.vibetagsVersion = '1.0.0-RC1'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'info.picocli:picocli:4.7.6'
+    implementation 'org.jsoup:jsoup:1.18.1'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+
+    // JSpecify nullness annotations (@NullMarked on package-info, @Nullable on APIs).
+    // CLASS-retention, so compile-only is enough — nothing is needed at runtime.
+    compileOnly 'org.jspecify:jspecify:1.0.0'
+
+    // VibeTags: compile-time AI guardrail annotations + processor. SOURCE-retention,
+    // zero runtime footprint; the processor regenerates the AI config files on compile.
+    compileOnly "se.deversity.vibetags:vibetags-processor:${vibetagsVersion}"
+    annotationProcessor "se.deversity.vibetags:vibetags-processor:${vibetagsVersion}"
+
+    // Error Prone — bug-pattern checks woven into javac (main sources only).
+    errorprone 'com.google.errorprone:error_prone_core:2.50.0'
+
+    // JUnit Jupiter 6.0.3+ is required by async-test-lib; archunit-junit5 1.4.0 is compatible.
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
+    testImplementation 'org.mockito:mockito-core:5.14.2'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.14.2'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.0'
+    // async-test-lib: JUnit 5 extension that stress-tests concurrent code (@AsyncTest).
+    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.7.0-RC1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.0.3'
+}
+
+application {
+    mainClass = 'se.deversity.skill3.Skill3App'
+}
+
+// Compile for Java 21 for broad compatibility; build runs on JDK 21+.
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+    // Point VibeTags at the project root (Gradle runs javac in a worker whose CWD differs)
+    // and set the project name used in generated llms.txt / llms-full.txt headers.
+    options.compilerArgs += ["-Avibetags.root=${rootDir}".toString(), '-Avibetags.project=Skill3']
+}
+
+// Error Prone: enabled on main sources, disabled on tests (mocks/fixtures trip checks
+// that don't apply to production code).
+tasks.named('compileJava') {
+    options.errorprone {
+        // SOURCE-retention guardrail annotations have no canonical javac home; silence
+        // the unrelated finalize() check that doesn't apply to this codebase.
+        disable('UnsafeFinalization')
+    }
+}
+tasks.named('compileTestJava') {
+    options.errorprone.enabled = false
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    // async-test-lib (@AsyncTest) is PolyForm Noncommercial; run its license guard in mock
+    // mode for the test JVM (noncommercial development use).
+    jvmArgs '-Dlicense.mock.mode=true'
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+    }
+    finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+pmd {
+    consoleOutput = true
+    toolVersion = '7.24.0'
+    ignoreFailures = false
+    ruleSets = []  // use only our curated ruleset, not PMD's defaults
+    ruleSetFiles = files("$rootDir/config/pmd-ruleset.xml")
+}
+tasks.named('pmdTest') { enabled = false }
+
+spotbugs {
+    effort = Effort.valueOf('MAX')
+    reportLevel = Confidence.valueOf('LOW')
+    ignoreFailures = false
+    excludeFilter = file("$rootDir/config/spotbugs-exclude.xml")
+}
+tasks.named('spotbugsTest') { enabled = false }
+tasks.named('spotbugsMain') {
+    reports {
+        html { required = true }
+        xml { required = true }
+    }
+}

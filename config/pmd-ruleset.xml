@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<ruleset name="Skill3 PMD Ruleset"
+    xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.net/ruleset_2_0_0.xsd">
+
+    <description>
+        Custom PMD ruleset for Skill3. Adapted from the VibeTags ruleset: imports the
+        error-prone and best-practices categories, excluding rules that clash with this
+        project's deliberate choices (a CLI that prints to stdout, swallows non-fatal
+        IOExceptions on best-effort cleanup, etc.).
+    </description>
+
+    <rule ref="category/java/errorprone.xml">
+        <exclude name="AvoidCatchingGenericException"/>
+        <exclude name="AvoidCatchingThrowable"/>
+        <exclude name="CloseResource"/>
+        <exclude name="AssignmentInOperand"/>
+        <exclude name="EmptyCatchBlock"/>
+        <exclude name="AvoidDuplicateLiterals"/>
+        <exclude name="AvoidFieldNameMatchingMethodName"/>
+        <exclude name="ReturnEmptyCollectionRatherThanNull"/>
+        <exclude name="AvoidLiteralsInIfCondition"/>
+        <exclude name="NullAssignment"/>
+    </rule>
+
+    <rule ref="category/java/bestpractices.xml">
+        <exclude name="GuardLogStatement"/>
+        <!-- Skill3 is a CLI; user-facing output via System.out/err is intentional. -->
+        <exclude name="SystemPrintln"/>
+        <exclude name="AvoidStringBufferField"/>
+        <exclude name="UnusedPrivateField"/>
+        <exclude name="UseVarargs"/>
+        <exclude name="LiteralsFirstInComparisons"/>
+        <exclude name="UnusedFormalParameter"/>
+        <exclude name="ExhaustiveSwitchHasDefault"/>
+    </rule>
+</ruleset>

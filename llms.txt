@@ -1,0 +1,28 @@
+<!-- VIBETAGS-START -->
+# Skill3
+
+> AI guardrail rules generated from source annotations by VibeTags.
+
+AI tools reading this file should respect the guardrails defined below. These rules were extracted from Java source annotations at compile time and apply to all AI assistants including Windsurf Cascade, Cursor, Claude, GitHub Copilot, and Gemini.
+
+## Locked Files
+
+## Contextual Rules
+- [CutoffResolver](se.deversity.skill3.pipeline.CutoffResolver): Focus - Keep the cutoff TABLE small and sourced from published model documentation. Avoid - hardcoding per-skill logic; the cutoff is always overridable via --cutoff-time
+
+## PII / Privacy Guardrails
+- [BraveSearchClient.apiKey](se.deversity.skill3.pipeline.BraveSearchClient.apiKey): Brave Search subscription token — never log, echo, or include in errors/fixtures
+
+## 🧠 Core Functionality
+- [SkillMdPostProcessor](se.deversity.skill3.llm.SkillMdPostProcessor): Sensitivity: High. Note: Deterministically guarantees SKILL.md spec compliance; model output is never trusted. Changes risk emitting invalid frontmatter — keep the parsing and frontmatter synthesis covered by SkillMdPostProcessorTest.
+
+## ❄️ Immutable Types
+- [ContextBundle](se.deversity.skill3.model.ContextBundle): immutable type — Immutable record; the sources list is defensively copied in the compact constructor.
+
+## 🔐 Security-Critical Code
+- [NameSanitizer](se.deversity.skill3.llm.NameSanitizer): Security-critical code [output sanitization: reserved-word stripping must never be weakened]. Do not weaken security properties. Flag any change for security review.
+- [BraveSearchClient](se.deversity.skill3.pipeline.BraveSearchClient): Security-critical code [external-API credential handling and the only network egress with a secret token]. Do not weaken security properties. Flag any change for security review.
+
+## Deterministic Pure Functions
+- [NameSanitizer.sanitize(java.lang.String)](se.deversity.skill3.llm.NameSanitizer.sanitize(java.lang.String)): Must remain a pure function. Forbid assignments to enclosing state, fields, or static members.
+<!-- VIBETAGS-END -->

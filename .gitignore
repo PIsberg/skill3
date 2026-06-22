@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.classpath
+*.project
+
+# Skill3 runtime artifacts
+skillspector-src/
+.venv/
+/skills/
+
+# VibeTags processor scratch files (the generated guardrails — CLAUDE.md, llms.txt,
+# llms-full.txt — are committed; only the processor's working files are ignored)
+.vibetags-cache
+.vibetags-mod-*
+.vibetags-locks
+vibetags.log
+
+# OS
+.DS_Store
+Thumbs.db

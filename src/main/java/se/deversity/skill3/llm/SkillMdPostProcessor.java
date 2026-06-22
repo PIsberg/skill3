@@ -204,25 +204,37 @@ public final class SkillMdPostProcessor {
             return String.join("\n", Arrays.copyOfRange(lines, i, lines.length)).strip();
         }
 
-        // Shared-delimiter case: opening --- was consumed by render(); strip a leading run of
-        // frontmatter-key/blank lines only if it is closed by a --- delimiter.
-        boolean sawKey = false;
-        for (int j = 0; j < lines.length; j++) {
+        // Shared-delimiter / fenced case: the opening --- was consumed upstream, so the body begins
+        // directly with frontmatter key lines. Measure the leading run of key/blank lines...
+        int j = 0;
+        int keyCount = 0;
+        while (j < lines.length) {
             String t = lines[j].strip();
-            if (t.equals("---")) {
-                return sawKey
-                        ? String.join("\n", Arrays.copyOfRange(lines, j + 1, lines.length)).strip()
-                        : b;
-            }
-            boolean keyOrBlank = t.isEmpty() || FRONTMATTER_KEY.matcher(t).matches();
-            if (!keyOrBlank) {
-                break; // real content before any --- => not a leaked block
-            }
-            if (!t.isEmpty()) {
-                sawKey = true;
+            if (t.isEmpty()) {
+                j++;
+            } else if (FRONTMATTER_KEY.matcher(t).matches()) {
+                keyCount++;
+                j++;
+            } else {
+                break;
             }
         }
-        return b;
+        if (keyCount == 0) {
+            return b; // no leaked frontmatter
+        }
+        // ...then strip it. Consume a trailing delimiter (--- or a stray ``` fence) if the run is
+        // closed by one. A lone key-looking line with no delimiter is treated as real prose, not a
+        // leak (>= 2 consecutive key lines is the tell-tale of a leaked frontmatter block).
+        int from = j;
+        if (j < lines.length) {
+            String t = lines[j].strip();
+            if (t.equals("---") || t.startsWith("```")) {
+                from = j + 1; // consume the terminating delimiter/fence
+            } else if (keyCount < 2) {
+                return b;
+            }
+        }
+        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length)).strip();
     }
 
     private static String stripCodeFence(String raw) {

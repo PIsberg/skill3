@@ -29,6 +29,33 @@ See [docs/SPEC.md](docs/SPEC.md) for the full specification,
 
 ---
 
+## What is a knowledge cutoff — and why it's the whole idea
+
+A large language model is trained on a snapshot of the world that ends on a fixed date:
+its **knowledge cutoff**. Everything before that date the model may know; everything
+**after** it the model has simply never seen. Claude Opus 4.8, for example, has a cutoff
+of **January 2026** — ask it about anything from February 2026 onward and it will either
+say it doesn't know, or (worse) confidently answer using stale, pre-cutoff information.
+
+The cutoff is not a bug to be patched; it's a hard property of how the model was trained.
+You can't retrain the model, but you *can* hand it the missing slice of the world at
+runtime. That is the entire premise of Skill3:
+
+> **Take a topic and a model's cutoff date, gather only what changed *after* that date,
+> and compile it into a `SKILL.md` the agent loads — so it answers from current reality
+> instead of stale memory.**
+
+Concretely, the cutoff date drives a date-bounded web search: discovery starts at the
+cutoff and ends today (`2026-01-01to<today>`), so the pipeline spends its effort on
+material the model could not possibly already know, rather than re-summarising what it
+learned in training. Everything else — authority scoring, freshness ranking, local
+synthesis, vetting — exists to turn that fresh slice into something an agent can trust.
+
+This works for **any** topic, not just code (see the [examples](#example-output) — a
+software protocol *and* current events). The cutoff is the dial; the skill is the output.
+
+---
+
 ## Why it matters: MCP versioning
 
 The cleanest illustration of the problem Skill3 solves is the **Model Context Protocol**.
@@ -236,6 +263,13 @@ full annotation set.
   versioning. Produced by the pipeline, then **edited for technical accuracy** (a small
   local synthesis model conflated unrelated tools); kept as the canonical illustration
   of post-cutoff drift. Output quality scales with the synthesis model.
+- [`examples/SKILL-trump.md`](examples/SKILL-trump.md) — a **non-technical** demo proving
+  the same machinery works for current events. It answers "what has the US president been
+  up to since the model's 2026-01 cutoff?" entirely from post-cutoff web sources Brave
+  surfaced (CNN/NBC articles dated 2026-03 and 2026-04 — content the model itself cannot
+  know). **Caveat:** this is *raw, unverified* output from a small local model
+  summarising those pages; it is included to demonstrate the pipeline, not as a
+  fact-checked reference. Judge the claims against the linked sources, not the summary.
 
 Every generated skill ends with a provenance footer —
 `_Created with [skill3](https://github.com/PIsberg/skill3)._` — stamped deterministically

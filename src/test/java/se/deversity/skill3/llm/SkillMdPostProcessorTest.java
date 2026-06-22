@@ -159,6 +159,32 @@ class SkillMdPostProcessorTest {
     }
 
     @Test
+    void stripsSecondaryFrontmatterTerminatedByCodeFence() {
+        // Observed in the wild (the 'trump' run): a leaked second frontmatter block closed by a
+        // stray ``` fence instead of a --- delimiter.
+        String raw = """
+                ---
+                name: trump
+                description: A real one-sentence summary of the topic for the skill.
+                ---
+                name: Trump Documents Skill
+                description: Summarizes recent developments.
+                ```
+
+                ## Overview
+
+                Recent reporting covers classified-document disclosures.
+                """;
+        String out = SkillMdPostProcessor.render(raw, bundle, LocalDate.of(2026, 6, 22));
+
+        assertFalse(out.contains("name: Trump Documents Skill"));
+        assertFalse(out.contains("Trump Documents Skill"));
+        assertFalse(out.contains("```"));
+        assertTrue(out.contains("## Overview"));
+        assertTrue(out.contains("Recent reporting covers classified-document disclosures."));
+    }
+
+    @Test
     void keepsBodyLineThatMerelyLooksLikeAKeyWithoutDelimiter() {
         // A prose body starting with "version: ..." and NO closing --- must be preserved.
         String raw = "## Notes\n\nversion: pin it in your manifest before shipping.";

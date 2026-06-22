@@ -1,6 +1,6 @@
 ---
 name: mcp
-description: "Connect AI applications to external tools, data, and services using the Model Context Protocol when integrating LLMs with databases, APIs, or specialized functionality across compatible clients."
+description: "Connect AI applications to external tools and data via the Model Context Protocol, including configuring servers, choosing transports, and securing connections in clients like Claude Code, VS Code, Cursor, and ChatGPT."
 metadata:
   version: 1.0.0
   learned-date: 2026-06-22
@@ -9,60 +9,81 @@ metadata:
 ---
 ## Overview
 
-The Model Context Protocol (MCP) is an open standard, introduced by Anthropic in November 2024, that standardizes secure, two-way connections between AI applications and external tools, data sources, and services—without custom per-integration code. It is often described as a "USB-C port for AI": any compliant host (such as Claude, ChatGPT, Cursor, or VS Code Copilot) can plug into any compliant server and immediately discover and use its capabilities.
+The Model Context Protocol (MCP) is an open-source, open standard introduced by Anthropic in November 2024 that standardises secure, two-way connections between AI applications and external tools, data sources, and services — without custom per-integration code. It is described as "a USB-C port for AI": any compliant host (Claude, ChatGPT, Cursor, VS Code Copilot) can plug into any compliant server and immediately discover and use its capabilities.
 
-MCP uses a client-server architecture:
+MCP solves the M×N integration problem: previously, M apps each needed custom code for N tools, with every integration inventing its own auth, sandboxing, and data-handling patterns. With MCP, tool providers expose one MCP interface and any MCP-enabled application can use it.
 
-- **Host** — The AI application that coordinates clients and uses provided context. Examples: Claude Desktop, VS Code with Copilot, Cursor, ChatGPT.
-- **Client** — Instantiated by the host, one per server. Handles the dedicated connection, capability discovery, and primitive invocation. To connect to multiple servers, one host opens and manages multiple clients.
-- **Server** — Exposes context to clients. Can be local (e.g., a filesystem server on the same machine) or remote (a hosted service over HTTPS).
+**Architecture (client-server):**
 
-Before MCP, every AI app needed custom code for every tool (M apps × N tools = M×N integrations to build and maintain), each integration invented its own auth and sandboxing patterns, and LLMs could not reliably discover available tools without bespoke prompt engineering. MCP solves this: developers implement a single MCP integration, and tool providers expose an MCP interface once to be accessed by any MCP-enabled application.
+| Role | Description |
+|------|-------------|
+| Host | The AI application that coordinates clients and uses provided context (e.g., Claude Desktop, VS Code with Copilot, Cursor, ChatGPT). |
+| Client | Instantiated by the host — one per server. Handles the dedicated connection, capability discovery, and primitive invocation. |
+| Server | Exposes context to clients. Can be local (e.g., filesystem server on the same machine) or remote (a hosted service over HTTPS). |
+
+To connect to multiple servers, one host opens and manages multiple clients.
+
+**Recent developments:** GitHub now hosts an MCP Registry to integrate external tools. Cloudflare provides APIs to build remote MCP servers (`createMcpHandler`, `McpAgent`, `McpClient`) plus features for MCP governance and charging for MCP tools via x402. The Microsoft Learn MCP Server is a publicly available remote server (Streamable HTTP) that lets clients like GitHub Copilot search official documentation, fetch complete articles, and search code samples — with no authentication required and no charge.
 
 ## When to use
 
-Use MCP when you need to:
+Use MCP when an AI model or agent needs to:
 
-- Connect an LLM to real-time or external data (financial data, pricing, user-specific data) that it does not have access to by default.
-- Give an AI agent the ability to take actions or fetch live data via tools (e.g., querying a PostgreSQL database, connecting to GitHub for code reviews, monitoring errors with Sentry).
-- Provide read-only structured context such as files, database records, or API responses to a model.
-- Integrate once and interoperate with any MCP-compatible system rather than building bespoke integrations per tool.
-- Surface up-to-date documentation or knowledge to coding agents (e.g., Context7, Microsoft Learn MCP Server).
+- Access databases, custom APIs, or specialized functionality beyond built-in capabilities (Roo Code).
+- Provide real-time or external context (current financial data, pricing, user-specific data) that LLMs lack by default (Vercel).
+- Implement features from issue trackers, analyze monitoring data, query databases, integrate designs, or automate workflows (Claude Code examples).
 
 ## Instructions
 
-1. **Choose host and server.** Identify the MCP host (your AI application or IDE) and the MCP server(s) exposing the capabilities you need. Servers may be local or remote.
+**1. Understand the primitives.** Servers expose three context types to clients, plus server-initiated capabilities:
 
-2. **Pick a transport:**
-   - **stdio** — Uses stdin/stdout. The host spawns the server as a child process on the same machine. Best for local servers.
-   - **Streamable HTTP** — Uses HTTP POST plus Server-Sent Events (SSE). Clients POST requests; servers stream responses. Supports multiple concurrent clients. Best for remote servers.
+| Primitive | Description |
+|-----------|-------------|
+| Tools | Functions the LLM can invoke to take actions or fetch live data. Each tool has a JSON Schema input definition the model uses to construct valid calls. |
+| Resources | Structured, URI-addressed read-only data the model can consume as context — files, database records, API responses. The model reads but does not modify them. |
+| Prompts | Reusable templates; in Claude Code these can be executed as commands. |
 
-3. **Establish the session.** MCP uses stateful JSON-RPC 2.0; a session is established per connection and maintained for its duration. The lifecycle is:
-   - Client sends `initialize` with its protocol version and capabilities.
-   - Server replies with its capabilities and server info.
-   - Client confirms the session is ready with a one-way notification.
-   - Client discovers capabilities, then invokes them.
+**2. Choose a transport.** MCP uses stateful JSON-RPC 2.0:
 
-4. **Use the server's primitives:**
-   - **Tools** — Functions the LLM can invoke to take actions or fetch live data. Each tool has a JSON Schema input definition the model uses to construct valid calls.
-   - **Resources** — Structured, URI-addressed read-only data the model can consume as context (files, database records, API responses). The model reads but does not modify resources.
-   - **Prompts** — Reusable prompt templates that some hosts can execute as commands.
+| Transport | How it works | Use case |
+|-----------|--------------|----------|
+| STDIO | Uses stdin/stdout; the host spawns the server as a child process on the same machine. | Local servers. |
+| Streamable HTTP | HTTP POST + Server-Sent Events (SSE). Clients POST requests; servers stream responses. Supports multiple concurrent clients. | Remote/hosted servers. |
+| SSE (legacy) | Listed as a legacy remote transport. | Older remote servers. |
 
-5. **Configure in your host.** For example:
-   - **VS Code:** Open the Extensions view and search `@mcp <name>` (e.g., `@mcp playwright`), then select Install to add the server to your user profile. Use the Agent Customizations editor (Preview) via `Chat: Open Customizations` to manage all customizations in one place.
-   - **Claude Code:** Add a remote HTTP server, remote SSE server, local stdio server, or remote WebSocket server. Configure installation scopes (local, project, user) with defined precedence; project-scoped servers live in `.mcp.json`, which supports environment variable expansion.
+**3. Know the session lifecycle:**
+1. Client sends `initialize` with its protocol version and capabilities.
+2. Server replies with its capabilities and server info.
+3. Client confirms the session is ready with a one-way notification.
+4. Client discovers capabilities then invokes them.
 
-6. **Handle authentication where required.** Remote servers may require OAuth. For Claude Code you can use a fixed OAuth callback port, pre-configured OAuth credentials, override OAuth metadata discovery, restrict OAuth scopes, or use dynamic headers for custom authentication. Some remote servers (e.g., Microsoft Learn MCP Server) require no authentication.
+A session is established per connection and maintained for its duration. All messages are JSON-RPC request/response pairs or one-way notifications. The schema is defined TypeScript-first and also published as `schema.json` in the spec repo.
 
-7. **Secure your connection.** Because each integration historically invented its own auth, sandboxing, and data-handling patterns, follow consistent security practices: review tool approvals, restrict scopes, and validate server trust before enabling.
+**4. Add a server to your client.** In Claude Code, choose a scope and transport:
 
-## Modern vs deprecated
+| Scope | Visibility |
+|-------|------------|
+| Local | Current session/machine only. |
+| Project | Shared via `.mcp.json` (supports environment variable expansion). |
+| User | Across your projects. |
 
-Roo Code's documentation distinguishes remote transports as **Streamable HTTP** (current) and **legacy SSE**. Prefer Streamable HTTP for remote servers and treat plain SSE as the legacy mechanism.
+Claude Code supports adding a remote HTTP server, a remote SSE server, a local stdio server, or a remote WebSocket server, plus plugin-provided MCP servers, dynamic tool updates, automatic reconnection, OAuth authentication (fixed callback port, pre-configured credentials, custom metadata discovery, restricted scopes, dynamic headers), MCP output limits, and MCP Tool Search for scaling.
+
+In VS Code, install an MCP server via the Extensions view (e.g., search `@mcp playwright`) and select **Install** to add it to your user profile, then use its tools in chat. Use the Agent Customizations editor (Preview) via **Chat: Open Customizations** in the Command Palette to manage customizations.
+
+**5. Secure your connection.** Cloudflare provides guides for securing MCP servers, handling OAuth with MCP servers, and MCP governance. Microsoft Learn MCP Server requires no authentication but is subject to the Microsoft Learn Terms of Use, and contains only publicly available documentation — not training or user profile information.
 
 ## Examples
 
-**Use a documentation server (Context7):** Append a directive to a coding prompt so the agent pulls up-to-date library docs:
+**Connect a remote, no-auth documentation server (Microsoft Learn):** A remote MCP server using Streamable HTTP that lets GitHub Copilot and other agents search Microsoft's official documentation, fetch a complete article, and search code samples. The endpoint is designed for programmatic MCP client access and may return `405 Method Not Allowed` if accessed manually from a browser. The underlying knowledge service refreshes incrementally after content updates and performs a full refresh once a day.
+
+**Use Context7 for up-to-date library docs.** Install:
+
+```
+npx ctx7 setup
+```
+
+Invoke in prompts:
 
 ```
 Create a Next.js middleware that checks for a valid JWT in cookies
@@ -70,33 +91,32 @@ and redirects unauthenticated users to `/login`. use context7
 ```
 
 ```
+Configure a Cloudflare Worker script to cache
+JSON API responses for five minutes. use context7
+```
+
+```
 How do I set up Next.js 14 middleware? use context7
 ```
 
-You can target a specific library and set up Context7 with its CLI:
+Target a specific library:
 
 ```
 Implement basic authentication with Supabase. use library /supabase/supabase for API and docs.
 ```
 
-```
-npx ctx7 setup
-```
-
-To make the behavior automatic, add a rule to your host:
+Make it automatic by adding a rule:
 
 ```
 Always use Context7 when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
 ```
 
-**Agentic workflows with tool servers (Claude Code):**
+**Claude Code workflow prompts:**
 
 - Implement features from issue trackers: "Add the feature described in JIRA issue ENG-4521 and create a PR on GitHub."
 - Analyze monitoring data: "Check Sentry and Statsig to check the usage of the feature described in ENG-4521."
 - Query databases: "Find emails of 10 random users who used feature ENG-4521, based on our PostgreSQL database."
 - Integrate designs: "Update our standard email template based on the new Figma designs that were posted in Slack."
-
-**Connect to a remote documentation server (Microsoft Learn):** The Microsoft Learn MCP Server is a remote MCP server using Streamable HTTP that lets clients like GitHub Copilot search documentation, fetch complete articles, and search code samples. It requires no authentication and is publicly available at no charge; its endpoint is for programmatic MCP client access and may return `405 Method Not Allowed` if accessed directly from a browser.
 
 ## Sources
 

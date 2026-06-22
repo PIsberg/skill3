@@ -1,6 +1,6 @@
 ---
 name: trump
-description: "Summarizes the March–April 2026 developments around the Jack Smith classified-documents memo disclosed to Congress and the DOJ Presidential Records Act opinion, for use when answering questions about these specific events."
+description: "Tracks and accurately summarizes 2026 developments in the Trump classified-documents disputes and presidential-records legal actions, for use when answering questions about these post-cutoff events."
 metadata:
   version: 1.0.0
   learned-date: 2026-06-22
@@ -9,49 +9,50 @@ metadata:
 ---
 ## Overview
 
-This skill covers two closely related sets of developments reported in March and April 2026 concerning President Donald Trump and federal records:
+This skill covers two distinct 2026 developments tied to President Donald Trump and government records:
 
-1. A January 13, 2023 memorandum from Special Counsel Jack Smith's team, produced by the Department of Justice to the House Judiciary Committee, that contained non-public allegations about Trump's handling of classified documents after his first term.
-2. A DOJ Office of Legal Counsel opinion stating that the Presidential Records Act is unconstitutional.
+1. A March 2026 dispute in which Rep. Jamie Raskin (D-Md.), ranking member of the House Judiciary Committee, said the Justice Department turned over a January 13, 2023 memorandum from Special Counsel Jack Smith's investigation containing what he called "damning evidence" about Trump's handling of classified documents. The White House and DOJ rejected the allegations as "baseless" and a "cheap political stunt."
+2. An April 2, 2026 DOJ Office of Legal Counsel opinion holding that the Presidential Records Act is unconstitutional, meaning the President "need not further comply with its dictates."
 
-The skill is intended to help summarize what each side asserted, drawing only on the reporting and the cited letter.
+Both involve contested claims. Attribute disputed assertions to their source and always include the rebuttal.
 
 ## When to use
 
-Use this skill when a user asks about:
-
-- The Jack Smith memo disclosed to the House Judiciary Committee in March 2026 and Rep. Jamie Raskin's letter to Attorney General Pam Bondi.
-- Allegations that retained classified documents related to Trump's business interests, a classified map allegedly shown aboard a plane, or a document accessible to only six government officials.
-- The DOJ Office of Legal Counsel opinion (April 2026) on the Presidential Records Act.
-- The status of Jack Smith's final report and Judge Aileen Cannon's orders.
-
-Present these as contested allegations and legal positions, not established facts, and include the responses from DOJ and the White House.
+- A user asks about the March 2026 Raskin/Bondi letter or the Jack Smith memo released to Congress.
+- A user asks about the April 2026 DOJ opinion on the Presidential Records Act.
+- A user asks about the current status of Smith's classified-documents case, Volume II of his report, or Judge Aileen Cannon's orders.
+- Use to correct vague or one-sided summaries, since these are politically contested events.
 
 ## Instructions
 
-1. **Frame the memo as an allegation under dispute.** Rep. Jamie Raskin, ranking Democrat on the House Judiciary Committee, said a January 13, 2023 memo produced by DOJ to the committee contained "damning evidence" about Trump's handling of classified documents. DOJ and the White House called the claims "baseless," "untrue," "salacious," and a "cheap political stunt."
-
-2. **State the specific allegations attributed to the memo.** According to the reporting and Raskin's letter:
-   - Investigators identified classified materials that "would be pertinent to certain business interests" and assessed this established "a motive for retaining them," writing "We must have those documents."
-   - Some materials posed an "aggravated potential harm to national security," including at least one document accessible to only six senior government officials, including the President.
-   - Prosecutors wrote that "Trump had many documents in his possession—so many and in so many different places that it is hard to fathom that he was not aware."
-   - Prosecutors "identified a classified map that we believe Trump may have shown to individuals on board" his private plane on a June 2022 flight to his Bedminster, New Jersey golf club, allegedly witnessed by Susie Wiles, then CEO of Trump's super PAC and now White House chief of staff. DOJ provided a map of the aircraft with all passenger names redacted.
-
-3. **Include the procedural dispute.** Raskin argued DOJ may have violated U.S. District Judge Aileen Cannon's order barring public disclosure of materials from the special counsel probe, noting a production marked "Contains 6(e) and Sealed Material" (grand jury material under Federal Rule 6(e)). DOJ asserted Cannon's order was not violated. A source told CNN the business-interests consideration was "speculative" and did not ultimately play a major role in the criminal case.
-
-4. **Carry the case background accurately.** Cannon, a Trump appointee, dismissed the documents case on the grounds that Smith's appointment was "unlawful," and later blocked release of Smith's final report (Volume II remained suppressed). Smith moved to dismiss the federal cases after Trump's 2024 election victory.
-
-5. **Cover the Presidential Records Act opinion separately.** A DOJ Office of Legal Counsel opinion issued Thursday (reported April 3, 2026) said the Presidential Records Act—a Watergate-era law—is unconstitutional and that "the President need not further comply with its dictates." Government transparency advocate Donald Sherman of Citizens for Responsibility and Ethics in Washington called it part of an "ongoing and escalating assault on transparency and oversight" and said no prior president had taken this position.
-
-6. **Always attribute and balance.** Note Trump has consistently denied wrongdoing. White House spokespeople (Abigail Jackson, Karoline Leavitt) and DOJ pushed back on Raskin's characterizations. Do not present any allegation as proven.
+1. **Separate the two events.** The Smith memo dispute (March 25, 2026) and the OLC Presidential Records Act opinion (April 2/3, 2026) are different stories; do not conflate them.
+2. **Attribute every contested claim.** The allegations about Trump's documents come from a DOJ memo as characterized by Raskin. Present them as allegations, not findings, and note Trump has consistently denied wrongdoing.
+3. **Always include the rebuttal.** DOJ called the claims "baseless" and "salacious and untrue"; White House spokespeople (Abigail Jackson, Karoline Leavitt) called them "untrue and salacious" and a "cheap political stunt." A source familiar with the case told CNN the business-interest angle was "speculative" and "did not ultimately play a major role in the criminal case."
+4. **Use exact figures and names.** The memo references one document "accessible by only 6 people, including the president"; the classified map was allegedly shown on a June 2022 flight to Bedminster, New Jersey, witnessed by Susie Wiles (then CEO of Trump's super PAC, now White House chief of staff).
+5. **Note the procedural/legal dispute.** Raskin alleged the disclosure may have violated Judge Cannon's seal order and may contain Rule 6(e) grand jury material. DOJ asserted Cannon's order was not violated. Flag both positions.
+6. **State case status.** Smith moved to dismiss both federal cases after Trump's 2024 win; Cannon had dismissed the documents case (ruling Smith's appointment "unlawful") and later barred public release of Smith's final report, including Volume II, which DOJ continues to suppress.
+7. **For the Presidential Records Act item,** state it is an OLC opinion (legal advice to the executive branch), describe the watchdog criticism, and note no prior president has taken this position.
 
 ## Examples
 
-- *User: "What did the Jack Smith memo say about Trump's businesses?"* → Explain that, per Raskin's letter and the reporting, a January 2023 memo alleged some retained classified materials "would be pertinent to certain business interests" and that prosecutors saw this as establishing "a motive for retaining them"—while noting DOJ and the White House called the claims baseless and a source described the consideration as speculative.
+Concrete claims from the sources, for accurate summarization:
 
-- *User: "Did Trump show a classified map to people on a plane?"* → State that prosecutors alleged he "may have shown" a classified map to passengers on a June 2022 flight to Bedminster, allegedly witnessed by Susie Wiles, and that passenger names on the aircraft map were redacted; present it as an allegation, not a finding.
+| Claim | Attribution | Status |
+|---|---|---|
+| Trump retained documents "pertinent to certain business interests," establishing "a motive for retaining them" | DOJ/FBI Jan. 13, 2023 memo, per Raskin | Disputed; CNN source calls it "speculative" |
+| One document was "accessible by only 6 people, including the president" | Memo, per Raskin and NBC | Reported from memo |
+| Trump may have shown a classified map to passengers on a June 2022 flight to Bedminster; Susie Wiles witnessed it | Memo, per Raskin/Axios | Allegation; passenger names redacted in map DOJ provided |
+| "Trump had many documents... so many and in so many different places that it is hard to fathom that he was not aware" | Smith's team, per the memo | Quoted from memo |
+| Disclosure may violate Cannon's seal order / contain 6(e) grand jury material | Raskin letter to AG Pam Bondi | DOJ says Cannon's order was not violated |
+| Presidential Records Act is unconstitutional; President "need not further comply" | DOJ OLC opinion, April 2, 2026 | OLC legal opinion; criticized by CREW |
 
-- *User: "Can Trump keep government records now?"* → Describe the April 2026 DOJ Office of Legal Counsel opinion declaring the Presidential Records Act unconstitutional, and include the criticism from transparency advocates that no prior president took this position.
+Sample balanced summary:
+
+> On March 25, 2026, Rep. Jamie Raskin wrote to Attorney General Pam Bondi citing a January 2023 DOJ memo he said contained "damning evidence" that Trump retained highly sensitive classified documents — including one accessible to only six people — and allegedly showed a classified map to passengers on a 2022 flight. The DOJ called the allegations "baseless" and a "cheap political stunt," and the White House said Trump "did nothing wrong." Trump has consistently denied wrongdoing.
+
+White House response, verbatim from spokesperson Abigail Jackson:
+
+> "President Trump did nothing wrong, which is why he easily defeated the Biden DOJ's unprecedented lawfare campaign against him and then won nearly 80 million votes in a landslide election victory."
 
 ## Sources
 
@@ -60,6 +61,9 @@ Present these as contested allegations and legal positions, not established fact
 - https://www.nbcnews.com/politics/trump-administration/jack-smith-memo-trump-classified-documents-cannon-congress-doj-rcna265060
 - https://www.cnn.com/2026/03/25/politics/doj-disclosure-congress-trump-classified-documents
 - https://www.axios.com/2026/03/25/trump-bondi-raskin-doj-classified-documents-case
+- https://time.com/7288311/trump-transparency-white-house-transcripts-public-records-independent-databases-archives/
+- https://en.wikipedia.org/wiki/Donald_Trump's_disclosures_of_classified_information
+- https://www.federalregister.gov/presidential-documents/executive-orders/donald-trump/2026
 - https://www.nytimes.com/news-event/donald-trump-classified-documents-investigation
 
 ---

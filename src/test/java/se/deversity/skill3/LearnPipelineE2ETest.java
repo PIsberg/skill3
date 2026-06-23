@@ -236,6 +236,39 @@ class LearnPipelineE2ETest {
     }
 
     @Test
+    void blockingFindingsPoolHighSeverityAcrossInputAndOutput() {
+        SkillSpectorReport output = new SkillSpectorReport(
+                List.of(new Finding("x", "HIGH", "m", "SKILL.md", 1)), "raw");
+        SkillSpectorReport input = new SkillSpectorReport(List.of(
+                new Finding("y", "CRITICAL", "m", "source-1.txt", 2),
+                new Finding("z", "LOW", "m", "source-2.txt", 3)), "raw");
+        LearnPipeline.Result res = new LearnPipeline.Result(
+                null, null, null, "", true, output,
+                new se.deversity.skill3.skillspector.InputVetter.Result(input, 0, true, false));
+
+        // HIGH (output) + CRITICAL (input) block; LOW is advisory and excluded.
+        assertEquals(2, res.blockingFindings().size());
+    }
+
+    @Test
+    void residualHighSeverityOutputFindingsSurfaceAsBlocking(@TempDir Path dir) throws Exception {
+        Map<String, String> pages = Map.of("https://a.com/doc", page("2026-05-01", "x();"));
+        SkillSpectorReport clean = new SkillSpectorReport(List.of(), "[]");
+        SkillSpectorReport dirtyHigh = new SkillSpectorReport(
+                List.of(new Finding("prompt-injection", "HIGH", "m", "SKILL.md", 1)), "raw");
+        SkillSpectorRunner spector = mock(SkillSpectorRunner.class);
+        // Input scan clean; output scan stays HIGH every iteration -> never converges.
+        when(spector.scan(any())).thenReturn(clean, dirtyHigh);
+
+        LearnPipeline pipeline = new LearnPipeline(
+                search("https://a.com/doc"), fetcher(pages), new DateExtractor(), model(), spector);
+        LearnPipeline.Result res = pipeline.run(request(dir, false));
+
+        assertFalse(res.clean());
+        assertFalse(res.blockingFindings().isEmpty());
+    }
+
+    @Test
     void emptySearchResultsThrows(@TempDir Path dir) {
         LearnPipeline pipeline = new LearnPipeline(
                 search(), fetcher(Map.of()), new DateExtractor(), model(), null);

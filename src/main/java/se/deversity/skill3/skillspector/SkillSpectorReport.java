@@ -29,6 +29,11 @@ public class SkillSpectorReport {
         return findings;
     }
 
+    /** The subset of {@link #findings()} the run gate treats as blocking (see {@link Finding#isHighSeverity()}). */
+    public List<Finding> highSeverityFindings() {
+        return findings.stream().filter(Finding::isHighSeverity).toList();
+    }
+
     public String raw() {
         return raw;
     }

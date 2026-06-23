@@ -58,11 +58,30 @@ public class LearnPipeline {
                           boolean strictCutoff, Path outputDir) {
     }
 
-    /** Outcome of one run. {@code report} is null when vetting was skipped. */
+    /**
+     * Outcome of one run. {@code report} (output scan) and {@code inputVet} (input-corpus
+     * scan) are null when vetting was skipped.
+     */
     public record Result(Path skillFile, Path htmlFile, Path manifestFile, String skillMd,
-                         boolean vetted, SkillSpectorReport report) {
+                         boolean vetted, SkillSpectorReport report, InputVetter.Result inputVet) {
         public boolean clean() {
             return report != null && report.clean();
+        }
+
+        /**
+         * High-severity findings the run gate treats as blocking, pooled across BOTH the
+         * input-corpus scan and the output-skill scan. Empty when vetting was skipped or
+         * everything is clean/advisory.
+         */
+        public List<Finding> blockingFindings() {
+            List<Finding> blocking = new ArrayList<>();
+            if (report != null) {
+                blocking.addAll(report.highSeverityFindings());
+            }
+            if (inputVet != null && inputVet.report() != null) {
+                blocking.addAll(inputVet.report().highSeverityFindings());
+            }
+            return blocking;
         }
     }
 
@@ -238,7 +257,7 @@ public class LearnPipeline {
         timings.put("totalMs", elapsedMs(t0));
         Path manifestFile = writeManifest(req, discovery, today, vetted, report, inputVet, timings);
 
-        return new Result(skillFile, html, manifestFile, skillMd, vetted, report);
+        return new Result(skillFile, html, manifestFile, skillMd, vetted, report, inputVet);
     }
 
     private static long elapsedMs(long startNanos) {

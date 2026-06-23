@@ -66,8 +66,8 @@ public class Verifier {
         for (int i = 0; i < Math.min(MAX_SOURCES, sources.size()); i++) {
             Source s = sources.get(i);
             sb.append("\n[").append(s.url).append("] published=").append(s.published).append('\n');
-            for (int j = 0; j < Math.min(MAX_EXCERPTS, s.excerpts.size()); j++) {
-                sb.append("- ").append(s.excerpts.get(j)).append('\n');
+            for (String excerpt : EvidenceSelector.topByRelevance(s.excerpts, bundle.skillName(), MAX_EXCERPTS)) {
+                sb.append("- ").append(excerpt).append('\n');
             }
             for (int j = 0; j < Math.min(MAX_CODE, s.codeBlocks.size()); j++) {
                 sb.append("- code: ").append(s.codeBlocks.get(j)).append('\n');

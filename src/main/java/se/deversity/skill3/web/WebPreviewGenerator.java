@@ -17,6 +17,12 @@ public class WebPreviewGenerator {
     private static final Pattern INLINE_CODE = Pattern.compile("`([^`]+)`");
     private static final Pattern LINK = Pattern.compile("\\[([^\\]]+)]\\(([^)\\s]+)\\)");
     private static final Pattern BOLD = Pattern.compile("\\*\\*([^*]+)\\*\\*");
+    // Only http(s)/mailto links are rendered as anchors, and the URL must contain no quote,
+    // angle bracket or whitespace — so it cannot break out of the href attribute. Anything else
+    // (javascript:, data:, attribute-breakout payloads, relative links) is left as literal text.
+    // The SKILL.md is built from untrusted web/LLM content and the preview is opened in a browser,
+    // so this is the XSS boundary for the link span.
+    private static final Pattern SAFE_URL = Pattern.compile("(?i)^(?:https?:|mailto:)[^\"'<>\\s]*$");
     // Italic only when underscores form a clear pair on word boundaries, so technical
     // identifiers like `_meta` (a lone leading underscore) are never mangled.
     private static final Pattern ITALIC = Pattern.compile("(?<![\\w])_([^_\\n]+)_(?![\\w])");
@@ -128,8 +134,22 @@ public class WebPreviewGenerator {
         h = INLINE_CODE.matcher(h).replaceAll("<code>$1</code>");
         h = BOLD.matcher(h).replaceAll("<strong>$1</strong>");
         h = ITALIC.matcher(h).replaceAll("<em>$1</em>");
-        h = LINK.matcher(h).replaceAll("<a href=\"$2\" target=\"_blank\" rel=\"noopener noreferrer\">$1</a>");
+        // Per-match function: the returned string is used literally (no $-group expansion), and the
+        // URL is scheme-checked so an unsafe link degrades to literal text instead of an anchor.
+        h = LINK.matcher(h).replaceAll(m -> renderLink(m.group(1), m.group(2)));
         return h;
+    }
+
+    /**
+     * Renders a Markdown link as an anchor only when the URL is a safe http(s)/mailto target with
+     * no attribute-breakout characters; otherwise emits the original text literally. The text and
+     * URL are already HTML-escaped by {@link #inline}, so {@code &} is already {@code &amp;} here.
+     */
+    private static String renderLink(String text, String url) {
+        if (!SAFE_URL.matcher(url).matches()) {
+            return "[" + text + "](" + url + ")"; // unsafe/unknown scheme — keep as literal text
+        }
+        return "<a href=\"" + url + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + text + "</a>";
     }
 
     private static final String TEMPLATE = """

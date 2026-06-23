@@ -72,6 +72,25 @@ class WebPreviewGeneratorTest {
     }
 
     @Test
+    void doesNotRenderJavascriptOrDataUrlsAsLinks() {
+        // Untrusted source/LLM content must not produce a clickable javascript:/data: anchor.
+        String js = WebPreviewGenerator.toHtml("[click me](javascript:alert(document.cookie))");
+        assertFalse(js.contains("<a "));
+        assertFalse(js.contains("href=\"javascript"));
+
+        String data = WebPreviewGenerator.toHtml("[x](data:text/html,<script>alert(1)</script>)");
+        assertFalse(data.contains("<a "));
+    }
+
+    @Test
+    void rejectsAttributeBreakoutInLinkUrl() {
+        // A quote in the URL must never break out of href="..."; degrade to literal text (no anchor).
+        String html = WebPreviewGenerator.toHtml("[x](https://a\"onmouseover=\"alert(1))");
+        assertFalse(html.contains("<a "));
+        assertFalse(html.contains("href="));
+    }
+
+    @Test
     void doesNotRenderMarkdownInsideCodeBlocks() {
         String html = WebPreviewGenerator.toHtml("```\n[x](y) **b**\n```");
         assertFalse(html.contains("<a href"));

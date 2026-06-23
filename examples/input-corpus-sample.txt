@@ -1,0 +1,36 @@
+# Sample --input-file corpus for `learn`.
+# Everything above the first "=== SOURCE ===" marker is ignored, so this header
+# is just a comment. Copy this file, replace the sources with your own curated
+# material, and run:
+#
+#   ./gradlew run --args="learn mcp --llm-model qwen2.5-coder:7b --input-file ./examples/input-corpus-sample.txt"
+#
+# Format per document:
+#   - a line that reads exactly: === SOURCE ===
+#   - header lines:  url (required), title (optional), date as yyyy-MM-dd (optional)
+#   - a blank line
+#   - the body: plain text, Markdown (``` code fences and # headings), or raw HTML.
+
+=== SOURCE ===
+url: https://modelcontextprotocol.io/specification
+title: MCP Specification (2026-03 revision)
+date: 2026-03-01
+
+# Resources
+
+The 2026-03 revision of the Model Context Protocol adds a `_meta` field that is
+now accepted on every request and response envelope, replacing the older
+per-method extension blocks.
+
+```
+{ "jsonrpc": "2.0", "method": "tools/list", "params": {}, "_meta": { "trace": "abc" } }
+```
+
+=== SOURCE ===
+url: https://github.com/modelcontextprotocol/spec/releases
+title: MCP spec releases
+date: 2026-04-12
+
+Release 2026-04 clarifies that servers MUST echo the `_meta.trace` value back on
+every response so clients can correlate streamed results. Tool result schemas are
+otherwise unchanged from the 2026-03 revision.

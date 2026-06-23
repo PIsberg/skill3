@@ -121,7 +121,7 @@ vetting. **Brave** does discovery and **SkillSpector** does safety vetting.
 | Stage | Component | Where | Notes |
 |---|---|---|---|
 | **Plan** | `QueryPlanner` (the synthesis model) | model | Topic-agnostic: the model expands the topic into up to 6 post-cutoff facet queries (it already knows the topic, so it knows what might have changed). No hardcoded per-topic logic. |
-| **Discover** | Brave Search API → web scraper fallback | Network | Runs every planned query (freshness-windowed); the only external service; needs an API key. |
+| **Discover** | Brave Search API → web scraper fallback, **or** `--input-file` (`FileCorpus`) | Network / **offline** | Runs every planned query (freshness-windowed); needs an API key. Or skip the network entirely and supply a user-curated corpus file — see [Offline discovery](#offline-discovery-with---input-file). |
 | **Fetch** | `RetrievalService` over virtual threads | Network | Merges/de-dupes URLs across queries, then fetches **concurrently** (one virtual thread per URL); results merged on the caller thread. |
 | **Date / authority** | `DateExtractor`, `AuthorityScorer` | Local | Published-date extraction + per-host trust; `--authoritative` hosts rank first. |
 | **Rank** | `IngestionPipeline` (`ConsensusValidator`, `FreshnessFilter`) | Local | Code kept only with cross-source agreement; freshness anchored to the cutoff **and bounded above by today** (future-dated sources dropped). |
@@ -190,7 +190,9 @@ The token is sent in the `X-Subscription-Token` header. If no key is found,
 
 > You don't strictly need a key to evaluate the pipeline: the example in
 > [`examples/`](examples/) was produced from seeded source URLs, and the tests
-> stub discovery behind the `SearchClient` interface.
+> stub discovery behind the `SearchClient` interface. For a real run with **no
+> key and no network at all**, supply your own sources with `--input-file` (see
+> [Offline discovery](#offline-discovery-with---input-file)).
 
 ---
 
@@ -222,9 +224,57 @@ Common options for `learn`:
 | `--authoritative <hosts>` | Comma-separated hosts ranked first (e.g. `modelcontextprotocol.io,github.com`). | — |
 | `--verify` | After synthesis, re-ground every claim against the sources (one extra model call). | off |
 | `--brave-key <key>` | Brave Search key (or `BRAVE_SEARCH_API_KEY`). | env |
+| `--input-file <path>` | Offline discovery: a user-curated corpus file used instead of Brave (no key/network). See [Offline discovery](#offline-discovery-with---input-file). | — |
 | `--output-dir <path>` | Where the skill is written. | `./skills/<skill-name>` |
 
 Output: `./skills/<skill-name>/SKILL.md` (+ an `index.html` preview).
+
+### Offline discovery with `--input-file`
+
+`--input-file` replaces Brave with a **user-curated corpus file** you fill in
+yourself — the same role Brave plays (supplying source documents), but offline:
+no key, no network, fully reproducible. It slots in behind the same
+`SearchClient`/`PageFetcher` seams (`FileCorpus`), so everything downstream —
+date extraction, authority scoring, consensus, freshness, synthesis and vetting —
+runs exactly as it would for live pages.
+
+```bash
+./gradlew run --args="learn mcp \
+  --llm-model qwen2.5-coder:7b \
+  --input-file ./my-sources.txt"
+```
+
+**File format.** Documents are separated by a line that reads exactly
+`=== SOURCE ===`. Each starts with `key: value` headers (`url` required;
+`title` and `date` as `yyyy-MM-dd` optional), then a blank line, then the body.
+The body may be plain text, Markdown (fenced ```` ``` ```` code blocks and `#`
+headings are recognised), or raw HTML:
+
+````
+=== SOURCE ===
+url: https://modelcontextprotocol.io/specification
+title: MCP Specification (2026-03 revision)
+date: 2026-03-01
+
+# Resources
+The _meta field is now accepted on every request in the 2026-03 revision.
+
+```
+client.call("tools/list");
+```
+
+=== SOURCE ===
+url: https://github.com/org/repo/releases
+date: 2026-04-01
+
+Release notes describing the new behaviour and flags...
+````
+
+The whole file is treated as the curated result set (every document is used —
+the model's planned queries don't filter it down). Anything before the first
+`=== SOURCE ===` marker is ignored, so you can keep a comment at the top. A
+ready-to-copy template lives at
+[`examples/input-corpus-sample.txt`](examples/input-corpus-sample.txt).
 
 ### Choosing a synthesis model
 

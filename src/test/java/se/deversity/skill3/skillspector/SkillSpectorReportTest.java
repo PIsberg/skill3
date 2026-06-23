@@ -2,6 +2,8 @@ package se.deversity.skill3.skillspector;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -49,6 +51,19 @@ class SkillSpectorReportTest {
         String sarif = "{\"runs\":[{\"results\":[{\"ruleId\":\"X\",\"level\":\"warning\",\"message\":\"m\"}]}]}";
         SkillSpectorReport report = SkillSpectorReport.parse(sarif);
         assertEquals(1, report.findings().size());
+    }
+
+    @Test
+    void highSeverityFindingsKeepOnlyBlockingSeverities() {
+        SkillSpectorReport report = new SkillSpectorReport(List.of(
+                new Finding("a", "LOW", "m", "f", 1),
+                new Finding("b", "MEDIUM", "m", "f", 2),
+                new Finding("c", "HIGH", "m", "f", 3),
+                new Finding("d", "critical", "m", "f", 4),
+                new Finding("e", "error", "m", "f", 5),     // SARIF level mapped into severity
+                new Finding("f", "warning", "m", "f", 6),
+                new Finding("g", null, "m", "f", 7)), "raw");
+        assertEquals(3, report.highSeverityFindings().size()); // HIGH, critical, error
     }
 
     @Test

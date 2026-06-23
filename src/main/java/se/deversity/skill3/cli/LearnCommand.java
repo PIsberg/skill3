@@ -106,6 +106,12 @@ public class LearnCommand implements Callable<Integer> {
     @Option(names = "--output-dir", description = "Output dir. Default: ./skills/<skill-name>")
     String outputDir;
 
+    @Option(names = "--no-fail-on-findings",
+            description = "Do NOT exit non-zero when high-severity (HIGH/CRITICAL) SkillSpector findings "
+                    + "remain after input + output vetting. The gate is ON by default (exit 3); the "
+                    + "skill is written either way.")
+    boolean noFailOnFindings;
+
     @Override
     public Integer call() {
         boolean fileMode = inputFile != null && !inputFile.isBlank();
@@ -227,6 +233,16 @@ public class LearnCommand implements Callable<Integer> {
             System.out.println("  " + res.skillFile());
             System.out.println("  " + res.htmlFile());
             System.out.println("  " + res.manifestFile());
+
+            if (!noFailOnFindings) {
+                List<Finding> blocking = res.blockingFindings();
+                if (!blocking.isEmpty()) {
+                    System.err.println("FAILED: " + blocking.size() + " high-severity SkillSpector "
+                            + "finding(s) remain after vetting (input + output). The skill was written "
+                            + "but flagged; pass --no-fail-on-findings to emit it without failing.");
+                    return 3;
+                }
+            }
             return 0;
         } catch (IllegalStateException e) {
             System.err.println(e.getMessage());

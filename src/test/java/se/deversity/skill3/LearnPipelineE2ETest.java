@@ -90,6 +90,10 @@ class LearnPipelineE2ETest {
         assertTrue(manifest.contains("modelcontextprotocol.io/spec"));
         assertTrue(manifest.contains("\"totalMs\""));
         assertTrue(manifest.contains("\"sourceCount\" : 2"));
+        // Input vetting ran and recorded its provenance alongside the output vetting.
+        assertTrue(manifest.contains("\"inputVetted\" : true"));
+        assertTrue(manifest.contains("\"inputClean\" : true"));
+        assertTrue(manifest.contains("\"inputVetMs\""));
     }
 
     @Test
@@ -189,7 +193,9 @@ class LearnPipelineE2ETest {
                 List.of(new Finding("prompt-injection", "HIGH", "m", "SKILL.md", 1)), "raw");
         SkillSpectorReport clean = new SkillSpectorReport(List.of(), "[]");
         SkillSpectorRunner spector = mock(SkillSpectorRunner.class);
-        when(spector.scan(any())).thenReturn(dirty, clean);
+        // First scan() is the input-corpus vet (clean); the output self-correction loop then
+        // sees a finding and converges on the rescan.
+        when(spector.scan(any())).thenReturn(clean, dirty, clean);
 
         LearnPipeline pipeline = new LearnPipeline(
                 search("https://a.com/doc", "https://b.com/doc"),
@@ -227,6 +233,53 @@ class LearnPipelineE2ETest {
 
         assertTrue(Files.exists(res.skillFile()));
         assertTrue(Files.readString(res.skillFile()).startsWith("---"));
+    }
+
+    @Test
+    void blockingFindingsPoolHighSeverityAcrossInputAndOutput() {
+        SkillSpectorReport output = new SkillSpectorReport(
+                List.of(new Finding("x", "HIGH", "m", "SKILL.md", 1)), "raw");
+        SkillSpectorReport input = new SkillSpectorReport(List.of(
+                new Finding("y", "CRITICAL", "m", "source-1.txt", 2),
+                new Finding("z", "LOW", "m", "source-2.txt", 3)), "raw");
+        LearnPipeline.Result res = new LearnPipeline.Result(
+                null, null, null, "", true, output,
+                new se.deversity.skill3.skillspector.InputVetter.Result(
+                        input, 0, true, false, List.of(), List.of()));
+
+        // HIGH (output) + CRITICAL (input) block; LOW is advisory and excluded.
+        assertEquals(2, res.blockingFindings().size());
+    }
+
+    @Test
+    void residualHighSeverityOutputFindingsSurfaceAsBlocking(@TempDir Path dir) throws Exception {
+        Map<String, String> pages = Map.of("https://a.com/doc", page("2026-05-01", "x();"));
+        SkillSpectorReport clean = new SkillSpectorReport(List.of(), "[]");
+        SkillSpectorReport dirtyHigh = new SkillSpectorReport(
+                List.of(new Finding("prompt-injection", "HIGH", "m", "SKILL.md", 1)), "raw");
+        SkillSpectorRunner spector = mock(SkillSpectorRunner.class);
+        // Input scan clean; output scan stays HIGH every iteration -> never converges.
+        when(spector.scan(any())).thenReturn(clean, dirtyHigh);
+
+        LearnPipeline pipeline = new LearnPipeline(
+                search("https://a.com/doc"), fetcher(pages), new DateExtractor(), model(), spector);
+        LearnPipeline.Result res = pipeline.run(request(dir, false));
+
+        assertFalse(res.clean());
+        assertFalse(res.blockingFindings().isEmpty());
+    }
+
+    @Test
+    void allSourcesQuarantinedThrows(@TempDir Path dir) throws Exception {
+        // The lone source is flagged high-severity on input -> quarantined -> nothing left to build.
+        Map<String, String> pages = Map.of("https://a.com/doc", page("2026-05-01", "x();"));
+        SkillSpectorRunner spector = mock(SkillSpectorRunner.class);
+        when(spector.scan(any())).thenReturn(new SkillSpectorReport(
+                List.of(new Finding("prompt-injection", "HIGH", "m", "source-1.txt", 1)), "raw"));
+
+        LearnPipeline pipeline = new LearnPipeline(
+                search("https://a.com/doc"), fetcher(pages), new DateExtractor(), model(), spector);
+        assertThrows(IllegalStateException.class, () -> pipeline.run(request(dir, false)));
     }
 
     @Test

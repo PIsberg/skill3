@@ -7,7 +7,8 @@ For *what* it does, see [SPEC.md](SPEC.md); for the build order, see [PLAN.md](P
 
 Skill3 is a single-process Java CLI. A `learn` invocation runs a linear pipeline;
 each stage enriches or filters a list of `Source` objects until a `SKILL.md` is
-synthesized, optionally verified, and vetted.
+synthesized, optionally verified, and vetted — on **both** its input corpus and its
+output skill.
 
 The guiding invariant: a generated skill is a **post-cutoff delta**, not a primer.
 The target model already knows the topic up to its knowledge cutoff; the pipeline
@@ -35,13 +36,17 @@ graph TD
     Ingest --> Fresh[FreshnessFilter<br/>cutoff ≤ published ≤ today]
     Ingest --> Ranked[(ranked List&lt;Source&gt;)]
 
-    Ranked --> Synth[Synthesizer + ChatModel<br/>delta prompt]
+    Ranked --> InVet[InputVetter<br/>redact secrets · scan · quarantine<br/>Phase 3a, pre-synthesis]
+    InVet --> Spector[SkillSpectorRunner<br/>--no-llm static scan]
+    InVet --> Synth[Synthesizer + ChatModel<br/>delta prompt]
     Synth --> Verify[Verifier + ChatModel<br/>optional, --verify]
     Verify --> Post[SkillMdPostProcessor<br/>format guarantees + footer]
     Post --> Loop[SelfCorrectionLoop]
-    Loop --> Spector[SkillSpectorRunner]
+    Loop --> Spector
     Loop --> Out[SKILL.md]
     Out --> Web[WebPreviewGenerator → index.html]
+    Out --> Gate{high-severity<br/>findings remain?}
+    Gate -->|yes, gate on| Fail[exit 3]
 ```
 
 Every model-driven stage (`QueryPlanner`, `Synthesizer`, `Verifier`, and the
@@ -57,7 +62,8 @@ provider (local Ollama, an OpenAI-compatible gateway, or Claude) applies uniform
 | `se.deversity.skill3.model` | `Source` (mutable carrier), `ContextBundle` (immutable record), `Cutoff` — plain data. |
 | `se.deversity.skill3.pipeline` | Discovery + ingestion: `QueryPlanner`, `RetrievalService`, `BraveSearchClient`, `FileCorpus` (offline `--input-file`, implements both `SearchClient` and `PageFetcher`), `HttpPageFetcher`/`PageFetcher`, `DateExtractor`, `AuthorityScorer`, `ConsensusValidator`, `FreshnessFilter`, `IngestionPipeline`, `CutoffResolver`, `SearchClient`. |
 | `se.deversity.skill3.llm` | Synthesis: `ChatModel` (SAM); `LocalLlmClient` (OpenAI-compatible — local or hosted gateway via Bearer key); `AnthropicChatModel` (native `anthropic-java` SDK); `Synthesizer`, `Verifier`, `SkillMdPostProcessor`, `NameSanitizer`. |
-| `se.deversity.skill3.skillspector` | `SkillSpectorRunner` (ProcessBuilder), `SkillSpectorReport`, `Finding`, `Reviser`, `SelfCorrectionLoop`, `SkillSpectorUnavailableException`. |
+| `se.deversity.skill3.skillspector` | `SkillSpectorRunner` (ProcessBuilder), `SkillSpectorReport`, `Finding`, `InputVetter` (pre-synthesis input scan + secret redaction), `Reviser`, `SelfCorrectionLoop`, `SkillSpectorUnavailableException`. |
+| `se.deversity.skill3.console` | `ProgressBar` — neutral leaf for console progress output (drives the input-vetting progress bar). |
 | `se.deversity.skill3.web` | `WebPreviewGenerator`. |
 
 Every package carries a `@NullMarked` `package-info.java` (JSpecify). Layering is
@@ -132,12 +138,33 @@ sources do not support and demotes future-dated releases from "shipped" to "anno
 Its output is re-run through the post-processor. The gate is only worthwhile with a
 capable model — a weak local model can rewrite rather than ground, so it is opt-in.
 
-### Hybrid vetting
-`SelfCorrectionLoop` runs `SkillSpectorRunner` (`--no-llm`, static analysis only),
-feeds findings to a `Reviser` (a local-LLM revision via `ChatModel`), and rescans — up
-to a bounded number of iterations. Residual findings are surfaced as warnings, never
-silently dropped. "Clean" means safe and well-formed, not necessarily accurate — hence
-the separate accuracy gate above.
+### Two-sided vetting (input and output)
+Both the **input corpus** and the **output skill** are scanned by the same
+`SkillSpectorRunner` (`--no-llm`, static analysis only — no API key needed).
+
+- **Input (Phase 3a, before synthesis):** `InputVetter` first **deterministically
+  redacts** secret-shaped tokens from every source in place — so a leaked key never
+  reaches the model (or a hosted provider), even when the scanner is unavailable — then
+  scans the assembled corpus (each source written as `source-N.txt`). Any source carrying
+  a **high-severity** finding is **quarantined**: dropped from the set handed to the
+  synthesizer, with a warning, so a poisoned page never shapes the skill (the finding is
+  still recorded and still trips the gate — quarantine is mitigation, not amnesty; if
+  *every* source is quarantined the run fails loudly). The synthesizer only ever sees the
+  sanitized, surviving sources, and a live `ProgressBar` reports per-source progress.
+  Lower-severity findings are reported and recorded in `run.json`, not silently dropped;
+  the synthesis prompt additionally fences all source text as untrusted DATA.
+- **Output (after synthesis):** `SelfCorrectionLoop` scans the draft, feeds findings to
+  a `Reviser` (a local-LLM revision via `ChatModel`), and rescans — up to a bounded
+  number of iterations. Residual findings are surfaced, never hidden.
+
+**Run gate.** `LearnCommand` pools the **high-severity** findings (HIGH/CRITICAL, plus
+SARIF `error`) from both scans via `Result.blockingFindings()`; if any remain, the skill
+is still written but `learn` exits **3**. `--no-fail-on-findings` disables the gate, and
+advisory MEDIUM/LOW findings never gate. When SkillSpector is unavailable the scans are
+skipped, so nothing is gated — absence of findings is never *asserted*, only observed.
+
+"Clean" means safe and well-formed, not necessarily accurate — hence the separate
+accuracy gate above.
 
 ### Testability via interfaces
 Network and model access sit behind interfaces (`SearchClient`, `PageFetcher`,
@@ -148,10 +175,11 @@ is unit-tested with fakes and HTML fixtures — no live network or model. Concur
 
 ## Trust boundaries
 
-- Scraped page text **and `--input-file` content** are **untrusted data**: both
-  flow through the same path, are delimited in the synthesis and verification
-  prompts, the model is constrained to the supplied context, and the *output* is
-  vetted by SkillSpector.
+- Scraped page text **and `--input-file` content** are **untrusted data**: both flow
+  through the same path, are secret-redacted and SkillSpector-scanned **before**
+  synthesis (input vetting), delimited in the synthesis and verification prompts with
+  the model constrained to the supplied context, and the *output* is vetted by
+  SkillSpector again.
 - External processes (`git`, the venv `skillspector`) run via `ProcessBuilder` with
   explicit argument lists — never a shell string.
 - Network egress is discovery (Brave + page scraping) and the synthesis provider:
@@ -169,5 +197,10 @@ is unit-tested with fakes and HTML fixtures — no live network or model. Concur
   missing its `url:` header) → clear error before any model call.
 - Per-URL fetch failures (403/timeout/parse) are skipped; discovery is best-effort.
 - Future-dated sources are dropped by the freshness upper bound.
-- SkillSpector not installed → vetting skipped with a warning (skill still emitted).
+- SkillSpector not installed → both input and output vetting skipped with a warning
+  (skill still emitted; nothing is gated).
+- A source carries a high-severity finding → it is quarantined (dropped before synthesis)
+  with a warning; if **every** source is quarantined the run fails loudly.
+- High-severity findings remain after vetting → skill is written, but `learn` exits `3`
+  (override with `--no-fail-on-findings`).
 - Synthesis/verification provider errors surface as `IOException` and fail the run.

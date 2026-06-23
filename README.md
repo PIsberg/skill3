@@ -1,5 +1,14 @@
 # Skill3 — a fully local AI Skill Relearner
 
+<p align="center">
+  <img src="docs/demo.gif" alt="Skill3 learning a skill end-to-end: offline discovery, input-corpus vetting with a live progress bar (secret redaction + SkillSpector), local synthesis, and a clean SkillSpector pass." width="100%">
+</p>
+
+> A real, fully-offline `learn` run over a made-up corpus (`examples/demo-corpus.txt`).
+> Recorded from the real run by [`docs/record-demo.py`](docs/record-demo.py) (asciicast +
+> [`agg`](https://github.com/asciinema/agg)); the idle synthesis wait is time-compressed.
+> A [VHS](https://github.com/charmbracelet/vhs) recipe is in [`docs/demo.tape`](docs/demo.tape).
+
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/PIsberg/skill3/actions/workflows/ci.yml/badge.svg)](https://github.com/PIsberg/skill3/actions/workflows/ci.yml)
 [![Java 25](https://img.shields.io/badge/Java-25-orange?logo=openjdk)](https://adoptium.net/)

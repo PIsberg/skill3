@@ -8,7 +8,8 @@ import java.util.Map;
 /**
  * Provenance record for one {@code learn} run, written alongside the skill as {@code run.json}.
  * It answers "what produced this SKILL.md?" — the queries, the exact sources and scores that
- * backed it, whether it was verified and vetted, and how long each phase took. Plain value types
+ * backed it, whether it was verified and vetted (both the input corpus and the output skill), and
+ * how long each phase took. Plain value types
  * only (dates as ISO strings), so it serializes with a default {@code ObjectMapper} and no extra
  * Jackson modules. Lists are defensively copied so the record stays immutable.
  */
@@ -24,6 +25,11 @@ public record RunManifest(
         boolean vetted,
         boolean clean,
         int findings,
+        boolean inputVetted,
+        boolean inputClean,
+        int inputFindings,
+        int inputRedactions,
+        int inputQuarantined,
         List<SourceRef> sources,
         Map<String, Long> timingsMs) {
 

@@ -4,6 +4,7 @@ import se.deversity.skill3.llm.ChatModel;
 import se.deversity.skill3.llm.SkillMdPostProcessor;
 import se.deversity.skill3.llm.Synthesizer;
 import se.deversity.skill3.llm.Verifier;
+import se.deversity.skill3.console.ProgressBar;
 import se.deversity.skill3.model.ContextBundle;
 import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.model.Source;
@@ -15,6 +16,7 @@ import se.deversity.skill3.pipeline.QueryPlanner;
 import se.deversity.skill3.pipeline.RetrievalService;
 import se.deversity.skill3.pipeline.SearchClient;
 import se.deversity.skill3.skillspector.Finding;
+import se.deversity.skill3.skillspector.InputVetter;
 import se.deversity.skill3.skillspector.Reviser;
 import se.deversity.skill3.skillspector.SelfCorrectionLoop;
 import se.deversity.skill3.skillspector.SkillSpectorReport;
@@ -56,11 +58,30 @@ public class LearnPipeline {
                           boolean strictCutoff, Path outputDir) {
     }
 
-    /** Outcome of one run. {@code report} is null when vetting was skipped. */
+    /**
+     * Outcome of one run. {@code report} (output scan) and {@code inputVet} (input-corpus
+     * scan) are null when vetting was skipped.
+     */
     public record Result(Path skillFile, Path htmlFile, Path manifestFile, String skillMd,
-                         boolean vetted, SkillSpectorReport report) {
+                         boolean vetted, SkillSpectorReport report, InputVetter.Result inputVet) {
         public boolean clean() {
             return report != null && report.clean();
+        }
+
+        /**
+         * High-severity findings the run gate treats as blocking, pooled across BOTH the
+         * input-corpus scan and the output-skill scan. Empty when vetting was skipped or
+         * everything is clean/advisory.
+         */
+        public List<Finding> blockingFindings() {
+            List<Finding> blocking = new ArrayList<>();
+            if (report != null) {
+                blocking.addAll(report.highSeverityFindings());
+            }
+            if (inputVet != null && inputVet.report() != null) {
+                blocking.addAll(inputVet.report().highSeverityFindings());
+            }
+            return blocking;
         }
     }
 
@@ -174,8 +195,34 @@ public class LearnPipeline {
         timings.put("discoverMs", elapsedMs(t0));
         List<Source> ranked = discovery.ranked();
 
+        // Phase 3a — vet the untrusted input corpus BEFORE it reaches the synthesizer LLM:
+        // redact secret-shaped tokens in place, scan the sources for prompt injection, and
+        // quarantine any source with a high-severity finding. The synthesizer below then only
+        // ever sees the sanitized, non-quarantined sources.
+        List<Source> forSynthesis = ranked;
+        InputVetter.Result inputVet = null;
+        if (spector != null) {
+            System.out.println("Vetting input corpus (prompt-injection / secret leakage) before synthesis...");
+            long tInVet = System.nanoTime();
+            try {
+                inputVet = new InputVetter(spector).vet(ranked, new ProgressBar(System.out));
+                reportInputVetting(inputVet);
+                if (!inputVet.quarantined().isEmpty()) {
+                    forSynthesis = inputVet.kept();
+                    if (forSynthesis.isEmpty()) {
+                        throw new IllegalStateException("All " + ranked.size() + " source(s) quarantined by "
+                                + "input vetting (high-severity findings); nothing safe to synthesize from.");
+                    }
+                }
+            } catch (IOException e) {
+                // A vetting I/O hiccup must not sink the run; the source markers still fence the data.
+                System.out.println("Input vetting error (continuing without it): " + e.getMessage());
+            }
+            timings.put("inputVetMs", elapsedMs(tInVet));
+        }
+
         ContextBundle bundle = new ContextBundle(
-                req.skillName(), req.targetModel(), req.cutoff(), ranked);
+                req.skillName(), req.targetModel(), req.cutoff(), forSynthesis);
         Synthesizer synthesizer = richContext
                 ? new Synthesizer(model, 20, 20, 8)
                 : new Synthesizer(model);
@@ -217,18 +264,47 @@ public class LearnPipeline {
         Files.writeString(html, new WebPreviewGenerator().render(skillMd));
 
         timings.put("totalMs", elapsedMs(t0));
-        Path manifestFile = writeManifest(req, discovery, today, vetted, report, timings);
+        Path manifestFile = writeManifest(req, discovery, today, vetted, report, inputVet, timings);
 
-        return new Result(skillFile, html, manifestFile, skillMd, vetted, report);
+        return new Result(skillFile, html, manifestFile, skillMd, vetted, report, inputVet);
     }
 
     private static long elapsedMs(long startNanos) {
         return (System.nanoTime() - startNanos) / 1_000_000;
     }
 
+    private static void reportInputVetting(InputVetter.Result iv) {
+        if (iv.redactions() > 0) {
+            System.out.println("Input vetting: redacted " + iv.redactions()
+                    + " secret-shaped value(s) from the sources before synthesis.");
+        }
+        if (!iv.vetted()) {
+            System.out.println("Input vetting: SkillSpector unavailable; sources not scanned "
+                    + "(secrets still redacted). Run `setup` to enable it.");
+            return;
+        }
+        if (iv.clean()) {
+            System.out.println("Input vetting: clean — no injection findings in the sources.");
+            return;
+        }
+        System.out.println("WARNING: " + iv.report().findings().size()
+                + " input finding(s) in the retrieved sources (treated as untrusted data):");
+        for (Finding f : iv.report().findings()) {
+            System.out.println("  - [" + f.severity() + "] " + f.category() + ": " + f.message());
+        }
+        if (!iv.quarantined().isEmpty()) {
+            System.out.println("WARNING: quarantined " + iv.quarantined().size() + " source(s) with "
+                    + "high-severity finding(s) — dropped before synthesis:");
+            for (Source s : iv.quarantined()) {
+                System.out.println("  - " + s.url);
+            }
+        }
+    }
+
     /** Writes the {@code run.json} provenance manifest next to the skill and returns its path. */
     private Path writeManifest(Request req, Discovery discovery, LocalDate today,
-                               boolean vetted, SkillSpectorReport report, Map<String, Long> timings)
+                               boolean vetted, SkillSpectorReport report,
+                               InputVetter.Result inputVet, Map<String, Long> timings)
             throws IOException {
         List<RunManifest.SourceRef> refs = new ArrayList<>();
         for (Source s : discovery.ranked()) {
@@ -236,10 +312,18 @@ public class LearnPipeline {
                     s.url, s.published == null ? null : s.published.toString(),
                     s.authority, s.recencyWeight, s.combinedScore, s.postCutoff, s.consensusCount));
         }
+        boolean inputVetted = inputVet != null && inputVet.vetted();
+        boolean inputClean = inputVet != null && inputVet.clean();
+        int inputFindings = inputVet == null || inputVet.report() == null
+                ? 0 : inputVet.report().findings().size();
+        int inputRedactions = inputVet == null ? 0 : inputVet.redactions();
+        int inputQuarantined = inputVet == null ? 0 : inputVet.quarantined().size();
+
         RunManifest manifest = new RunManifest(
                 "skill3", req.skillName(), req.targetModel(), req.cutoff().iso(), today.toString(),
                 discovery.queries(), refs.size(), verify, vetted,
                 report != null && report.clean(), report == null ? 0 : report.findings().size(),
+                inputVetted, inputClean, inputFindings, inputRedactions, inputQuarantined,
                 refs, timings);
 
         Path manifestFile = req.outputDir().resolve("run.json");

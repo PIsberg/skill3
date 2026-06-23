@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 import se.deversity.skill3.llm.ChatModel;
 import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.pipeline.DateExtractor;
+import se.deversity.skill3.pipeline.FileCorpus;
 import se.deversity.skill3.pipeline.PageFetcher;
 import se.deversity.skill3.pipeline.SearchClient;
 import se.deversity.skill3.skillspector.Finding;
@@ -78,6 +79,50 @@ class LearnPipelineE2ETest {
         assertTrue(md.contains("cutoff: 2026-01"));
         assertTrue(md.contains("target-model: claude-opus-4-8"));
         assertTrue(Files.readString(res.htmlFile()).contains("<!DOCTYPE html>"));
+        assertTrue(res.vetted());
+        assertTrue(res.clean());
+    }
+
+    @Test
+    void inputFileCorpusDrivesFullPipelineOffline(@TempDir Path dir) throws Exception {
+        // A user-curated corpus file replaces Brave: the same FileCorpus is the
+        // SearchClient and the PageFetcher, so the run never touches the network.
+        Path corpusFile = dir.resolve("corpus.txt");
+        Files.writeString(corpusFile, """
+                === SOURCE ===
+                url: https://modelcontextprotocol.io/spec
+                date: 2026-05-01
+
+                The 2026-05 revision documents the new _meta field on every request.
+
+                ```
+                shared();
+                ```
+
+                === SOURCE ===
+                url: https://github.com/org/repo
+                date: 2026-04-01
+
+                A sufficiently long paragraph describing the released behaviour and flags.
+
+                ```
+                shared();
+                ```
+                """);
+        FileCorpus corpus = FileCorpus.load(corpusFile);
+
+        SkillSpectorRunner spector = mock(SkillSpectorRunner.class);
+        when(spector.scan(any())).thenReturn(new SkillSpectorReport(List.of(), "[]"));
+
+        LearnPipeline pipeline = new LearnPipeline(
+                corpus, corpus, new DateExtractor(), model(), spector);
+
+        LearnPipeline.Result res = pipeline.run(request(dir, false));
+
+        assertTrue(Files.exists(res.skillFile()));
+        String md = Files.readString(res.skillFile());
+        assertTrue(md.startsWith("---"));
+        assertTrue(md.contains("name: mcp"));
         assertTrue(res.vetted());
         assertTrue(res.clean());
     }

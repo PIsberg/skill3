@@ -11,7 +11,10 @@ import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.pipeline.BraveSearchClient;
 import se.deversity.skill3.pipeline.CutoffResolver;
 import se.deversity.skill3.pipeline.DateExtractor;
+import se.deversity.skill3.pipeline.FileCorpus;
 import se.deversity.skill3.pipeline.HttpPageFetcher;
+import se.deversity.skill3.pipeline.PageFetcher;
+import se.deversity.skill3.pipeline.SearchClient;
 import se.deversity.skill3.skillspector.Finding;
 import se.deversity.skill3.skillspector.SkillSpectorRunner;
 
@@ -79,15 +82,26 @@ public class LearnCommand implements Callable<Integer> {
     @Option(names = "--brave-key", description = "Brave Search key (or env BRAVE_SEARCH_API_KEY).")
     String braveKey;
 
+    @Option(names = "--input-file",
+            description = "Offline discovery: a user-curated corpus file (see docs) used instead of "
+                    + "Brave. When set, no Brave key or network is needed for discovery.")
+    String inputFile;
+
     @Option(names = "--output-dir", description = "Output dir. Default: ./skills/<skill-name>")
     String outputDir;
 
     @Override
     public Integer call() {
-        String key = braveKey != null ? braveKey : System.getenv("BRAVE_SEARCH_API_KEY");
-        if (key == null || key.isBlank()) {
-            System.err.println("No Brave Search key. Pass --brave-key or set BRAVE_SEARCH_API_KEY.");
-            return 2;
+        boolean fileMode = inputFile != null && !inputFile.isBlank();
+
+        String key = null;
+        if (!fileMode) {
+            key = braveKey != null ? braveKey : System.getenv("BRAVE_SEARCH_API_KEY");
+            if (key == null || key.isBlank()) {
+                System.err.println("No Brave Search key. Pass --brave-key or set BRAVE_SEARCH_API_KEY, "
+                        + "or use --input-file for offline discovery.");
+                return 2;
+            }
         }
 
         final Cutoff cutoff;
@@ -101,8 +115,24 @@ public class LearnCommand implements Callable<Integer> {
 
         Path outDir = outputDir != null ? Path.of(outputDir) : Path.of("skills", skillName);
 
-        String freshness = cutoff.freshnessRange(LocalDate.now(ZoneId.systemDefault()));
-        System.out.println("Search window: " + freshness);
+        final SearchClient search;
+        final PageFetcher fetcher;
+        if (fileMode) {
+            try {
+                FileCorpus corpus = FileCorpus.load(Path.of(inputFile));
+                search = corpus;
+                fetcher = corpus;
+            } catch (IOException e) {
+                System.err.println("Cannot read --input-file '" + inputFile + "': " + e.getMessage());
+                return 2;
+            }
+            System.out.println("Discovery: input file " + inputFile + " (offline, no Brave)");
+        } else {
+            String freshness = cutoff.freshnessRange(LocalDate.now(ZoneId.systemDefault()));
+            System.out.println("Search window: " + freshness);
+            search = new BraveSearchClient(key, freshness);
+            fetcher = new HttpPageFetcher();
+        }
 
         final ChatModel chat;
         String provider = llmProvider == null ? "local" : llmProvider.toLowerCase(Locale.ROOT);
@@ -137,8 +167,8 @@ public class LearnCommand implements Callable<Integer> {
                 new LearnPipeline.Options(5, 2, 3, richContext, authoritativeHosts, verify);
 
         LearnPipeline pipeline = new LearnPipeline(
-                new BraveSearchClient(key, freshness),
-                new HttpPageFetcher(),
+                search,
+                fetcher,
                 new DateExtractor(),
                 chat,
                 new SkillSpectorRunner(Venv.bin("skillspector").toString()),

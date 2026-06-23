@@ -24,8 +24,8 @@ graph TD
 
     Pipe --> Plan[QueryPlanner → facet queries]
     Plan --> Retrieve[RetrievalService]
-    Retrieve --> Brave[BraveSearchClient<br/>one search per query]
-    Retrieve --> Fetch[HttpPageFetcher<br/>parallel, virtual threads]
+    Retrieve --> Brave[BraveSearchClient<br/>one search per query<br/>or FileCorpus --input-file]
+    Retrieve --> Fetch[HttpPageFetcher<br/>parallel, virtual threads<br/>or FileCorpus --input-file]
     Retrieve --> Dates[DateExtractor]
     Retrieve --> Authority[AuthorityScorer]
     Retrieve --> Sources[(merged, de-duped<br/>List&lt;Source&gt;)]
@@ -55,7 +55,7 @@ provider (local Ollama, an OpenAI-compatible gateway, or Claude) applies uniform
 | `se.deversity.skill3` | `Skill3App` entry point and `LearnPipeline` orchestration (with `LearnPipeline.Options`). |
 | `se.deversity.skill3.cli` | `SetupCommand`, `LearnCommand` (picocli), `Venv`. |
 | `se.deversity.skill3.model` | `Source` (mutable carrier), `ContextBundle` (immutable record), `Cutoff` — plain data. |
-| `se.deversity.skill3.pipeline` | Discovery + ingestion: `QueryPlanner`, `RetrievalService`, `BraveSearchClient`, `HttpPageFetcher`/`PageFetcher`, `DateExtractor`, `AuthorityScorer`, `ConsensusValidator`, `FreshnessFilter`, `IngestionPipeline`, `CutoffResolver`, `SearchClient`. |
+| `se.deversity.skill3.pipeline` | Discovery + ingestion: `QueryPlanner`, `RetrievalService`, `BraveSearchClient`, `FileCorpus` (offline `--input-file`, implements both `SearchClient` and `PageFetcher`), `HttpPageFetcher`/`PageFetcher`, `DateExtractor`, `AuthorityScorer`, `ConsensusValidator`, `FreshnessFilter`, `IngestionPipeline`, `CutoffResolver`, `SearchClient`. |
 | `se.deversity.skill3.llm` | Synthesis: `ChatModel` (SAM); `LocalLlmClient` (OpenAI-compatible — local or hosted gateway via Bearer key); `AnthropicChatModel` (native `anthropic-java` SDK); `Synthesizer`, `Verifier`, `SkillMdPostProcessor`, `NameSanitizer`. |
 | `se.deversity.skill3.skillspector` | `SkillSpectorRunner` (ProcessBuilder), `SkillSpectorReport`, `Finding`, `Reviser`, `SelfCorrectionLoop`, `SkillSpectorUnavailableException`. |
 | `se.deversity.skill3.web` | `WebPreviewGenerator`. |
@@ -80,6 +80,16 @@ protocol, a person, or a release. It falls back to the bare topic if planning fa
 de-duplicates the result URLs, and fetches the pages **concurrently** on a
 virtual-thread-per-task executor (blocking I/O, independent work); results are merged
 on the caller thread, so no `Source` is shared between workers.
+
+### Offline discovery (`--input-file` / `FileCorpus`)
+`FileCorpus` is a no-network alternative to Brave: the user pastes the relevant
+documents into one curated file and passes `--input-file`. It implements **both**
+discovery seams — `SearchClient` (returns every URL in the file) and `PageFetcher`
+(replays each document's body as synthesized HTML) — so `LearnCommand` injects one
+instance into both slots and the rest of the pipeline is identical to a live run.
+Bodies may be plain text, Markdown, or HTML; the file is the curated result set, so
+the whole corpus is used regardless of the model's planned queries. No Brave key or
+network egress is needed for discovery in this mode.
 
 ### Cutoff-anchored freshness, bounded both ends
 `CutoffResolver` maps `--target-model` to a knowledge-cutoff month (overridable with
@@ -138,21 +148,25 @@ is unit-tested with fakes and HTML fixtures — no live network or model. Concur
 
 ## Trust boundaries
 
-- Scraped page text is **untrusted data**: it is delimited in the synthesis and
-  verification prompts, the model is constrained to the supplied context, and the
-  *output* is vetted by SkillSpector.
+- Scraped page text **and `--input-file` content** are **untrusted data**: both
+  flow through the same path, are delimited in the synthesis and verification
+  prompts, the model is constrained to the supplied context, and the *output* is
+  vetted by SkillSpector.
 - External processes (`git`, the venv `skillspector`) run via `ProcessBuilder` with
   explicit argument lists — never a shell string.
 - Network egress is discovery (Brave + page scraping) and the synthesis provider:
   loopback by default (`local`), or a hosted endpoint when `--llm-provider openai`
-  or `anthropic` is chosen explicitly. The Brave key and any provider key are
-  treated as secrets (`@AIPrivacy`) and never logged.
+  or `anthropic` is chosen explicitly. With `--input-file`, discovery makes **no
+  network calls at all**. The Brave key and any provider key are treated as secrets
+  (`@AIPrivacy`) and never logged.
 
 ## Failure handling
 
 - Missing/unknown `--target-model` with no `--cutoff-time` → clear error.
 - A hosted provider with no key (`openai`/`anthropic`) → clear error before any run.
 - No usable sources, or everything filtered out under `--strict-cutoff` → loud error.
+- An unreadable or malformed `--input-file` (no `=== SOURCE ===` blocks, or a source
+  missing its `url:` header) → clear error before any model call.
 - Per-URL fetch failures (403/timeout/parse) are skipped; discovery is best-effort.
 - Future-dated sources are dropped by the freshness upper bound.
 - SkillSpector not installed → vetting skipped with a warning (skill still emitted).

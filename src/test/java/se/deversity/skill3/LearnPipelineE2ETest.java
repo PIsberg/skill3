@@ -82,6 +82,14 @@ class LearnPipelineE2ETest {
         assertTrue(Files.readString(res.htmlFile()).contains("<!DOCTYPE html>"));
         assertTrue(res.vetted());
         assertTrue(res.clean());
+
+        // Provenance manifest is written and records the sources, queries and timings.
+        assertTrue(Files.exists(res.manifestFile()));
+        String manifest = Files.readString(res.manifestFile());
+        assertTrue(manifest.contains("\"skill\" : \"mcp\""));
+        assertTrue(manifest.contains("modelcontextprotocol.io/spec"));
+        assertTrue(manifest.contains("\"totalMs\""));
+        assertTrue(manifest.contains("\"sourceCount\" : 2"));
     }
 
     @Test
@@ -145,7 +153,7 @@ class LearnPipelineE2ETest {
         };
 
         LearnPipeline pipeline = new LearnPipeline(corpus, corpus, new DateExtractor(), mustNotRun, null);
-        List<Source> ranked = pipeline.discover(request(dir, false));
+        List<Source> ranked = pipeline.discover(request(dir, false)).ranked();
 
         assertEquals(1, ranked.size());
         assertEquals("https://modelcontextprotocol.io/spec", ranked.get(0).url);
@@ -161,9 +169,11 @@ class LearnPipelineE2ETest {
                 search("https://modelcontextprotocol.io/spec", "https://github.com/org/repo"),
                 fetcher(pages), new DateExtractor(), model(), null);
 
-        List<Source> ranked = pipeline.discover(request(dir, false));
+        LearnPipeline.Discovery discovery = pipeline.discover(request(dir, false));
+        List<Source> ranked = discovery.ranked();
 
         assertEquals(2, ranked.size());
+        assertFalse(discovery.queries().isEmpty());
         // Best-first: the post-cutoff, higher-combined-score source leads.
         assertTrue(ranked.get(0).combinedScore >= ranked.get(1).combinedScore);
         assertFalse(Files.exists(dir.resolve("SKILL.md"))); // discovery writes nothing

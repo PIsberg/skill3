@@ -224,12 +224,21 @@ Common options for `learn`:
 | `--temperature <t>` | Sampling temperature (local/openai only). | server default |
 | `--rich-context` | Feed more sources/excerpts to the model (suits big-context models). | off |
 | `--authoritative <hosts>` | Comma-separated hosts ranked first (e.g. `modelcontextprotocol.io,github.com`). | — |
-| `--verify` | After synthesis, re-ground every claim against the sources (one extra model call). | off |
+| `--verify` / `--no-verify` | Re-ground every claim against the sources (accuracy gate, one extra model call). | on for `openai`/`anthropic`, off for `local` |
 | `--brave-key <key>` | Brave Search key (or `BRAVE_SEARCH_API_KEY`). | env |
 | `--input-file <path>` | Offline discovery: a user-curated corpus file used instead of Brave (no key/network). See [Offline discovery](#offline-discovery-with---input-file). | — |
+| `--dry-run` | Stop after discovery + ranking; print the sources, dates and scores; write nothing. | off |
+| `--no-cache` | Bypass the on-disk cache of search results and fetched pages (`~/.skill3/cache`, 7-day TTL). | off |
 | `--output-dir <path>` | Where the skill is written. | `./skills/<skill-name>` |
 
-Output: `./skills/<skill-name>/SKILL.md` (+ an `index.html` preview).
+Output: `./skills/<skill-name>/SKILL.md` (+ an `index.html` preview and a `run.json`
+provenance manifest recording the queries, the exact sources and scores that backed the
+skill, the verify/vet outcome, and per-phase timings).
+
+Discovery and model calls retry transient failures (connection errors, `429`, `5xx`) with
+exponential backoff (honoring `Retry-After`), and search results + fetched pages are cached
+under `~/.skill3/cache` (7-day TTL) so re-running a topic skips the network — pass `--no-cache`
+to force fresh fetches.
 
 ### Offline discovery with `--input-file`
 

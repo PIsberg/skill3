@@ -90,6 +90,10 @@ class LearnPipelineE2ETest {
         assertTrue(manifest.contains("modelcontextprotocol.io/spec"));
         assertTrue(manifest.contains("\"totalMs\""));
         assertTrue(manifest.contains("\"sourceCount\" : 2"));
+        // Input vetting ran and recorded its provenance alongside the output vetting.
+        assertTrue(manifest.contains("\"inputVetted\" : true"));
+        assertTrue(manifest.contains("\"inputClean\" : true"));
+        assertTrue(manifest.contains("\"inputVetMs\""));
     }
 
     @Test
@@ -189,7 +193,9 @@ class LearnPipelineE2ETest {
                 List.of(new Finding("prompt-injection", "HIGH", "m", "SKILL.md", 1)), "raw");
         SkillSpectorReport clean = new SkillSpectorReport(List.of(), "[]");
         SkillSpectorRunner spector = mock(SkillSpectorRunner.class);
-        when(spector.scan(any())).thenReturn(dirty, clean);
+        // First scan() is the input-corpus vet (clean); the output self-correction loop then
+        // sees a finding and converges on the rescan.
+        when(spector.scan(any())).thenReturn(clean, dirty, clean);
 
         LearnPipeline pipeline = new LearnPipeline(
                 search("https://a.com/doc", "https://b.com/doc"),

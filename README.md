@@ -346,12 +346,24 @@ its cutoff. Widen it for a given run with `--cutoff-time` (e.g. `--cutoff-time 2
 | **ArchUnit** (`1.4.0`) | layering / cycles | [`ArchitectureTest`](src/test/java/se/deversity/skill3/ArchitectureTest.java) |
 | **JSpecify** (`1.0.0`) | nullness | `@NullMarked` `package-info.java` per package |
 | **async-test-lib** (`1.7.0-RC1`) | concurrency stress tests (`@AsyncTest`) | [`ConcurrencySafetyTest`](src/test/java/se/deversity/skill3/ConcurrencySafetyTest.java) |
+| **JaCoCo** coverage gate | `check` fails below 75% instruction / 65% branch | `build.gradle` |
 
 Tests run on JUnit Jupiter 6; the hosted Claude provider uses the official
 `anthropic-java` SDK.
 
 ArchUnit keeps the layering honest: `model` is a dependency-free leaf, only the
 `Skill3App` composition root touches `cli`, and the sub-packages stay acyclic.
+
+### Releases
+
+Push a `v*` tag to cut a release: CI runs the full gate, builds the application
+distribution (`./gradlew build` → `build/distributions/skill3-<version>.zip|tar`,
+launch scripts included), and publishes a GitHub Release with auto-generated notes
+and the distribution attached — see [`release.yml`](.github/workflows/release.yml).
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
 
 ### AI guardrails (VibeTags)
 

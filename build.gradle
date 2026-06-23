@@ -19,13 +19,13 @@ repositories {
 }
 
 dependencies {
-    implementation 'info.picocli:picocli:4.7.6'
-    implementation 'org.jsoup:jsoup:1.18.1'
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+    implementation 'info.picocli:picocli:4.7.7'
+    implementation 'org.jsoup:jsoup:1.22.2'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.22.0'
 
     // Native Anthropic SDK for the optional hosted Claude synthesis provider. Local-first
     // stays the default; this is only used with --llm-provider anthropic.
-    implementation 'com.anthropic:anthropic-java:2.34.0'
+    implementation 'com.anthropic:anthropic-java:2.43.0'
 
     // JSpecify nullness annotations (@NullMarked on package-info, @Nullable on APIs).
     // CLASS-retention, so compile-only is enough — nothing is needed at runtime.
@@ -39,23 +39,33 @@ dependencies {
     // Error Prone — bug-pattern checks woven into javac (main sources only).
     errorprone 'com.google.errorprone:error_prone_core:2.50.0'
 
-    // JUnit Jupiter 6.0.3+ is required by async-test-lib; archunit-junit5 1.4.0 is compatible.
-    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
-    testImplementation 'org.mockito:mockito-core:5.14.2'
-    testImplementation 'org.mockito:mockito-junit-jupiter:5.14.2'
-    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.0'
+    // JUnit Jupiter 6.0.3+ is required by async-test-lib; archunit-junit5 1.4.x is compatible.
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.1.0'
+    testImplementation 'org.mockito:mockito-core:5.23.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.23.0'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.2'
     // async-test-lib: JUnit 5 extension that stress-tests concurrent code (@AsyncTest).
     testImplementation 'se.deversity.async-test-lib:async-test-lib:1.7.0-RC1'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.0.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.1.0'
 }
 
 application {
     mainClass = 'se.deversity.skill3.Skill3App'
 }
 
-// Compile for Java 21 for broad compatibility; build runs on JDK 21+.
+// Build, test and run on JDK 25. The toolchain is provisioned by Gradle (auto-detected
+// from installed JDKs, or downloaded via the Foojay resolver in settings.gradle), so the
+// build no longer depends on JAVA_HOME — it works regardless of the JDK running Gradle.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+// Target Java 25 bytecode. Redundant with the toolchain above, but kept explicit so the
+// bytecode floor is obvious and survives any future toolchain change.
 tasks.withType(JavaCompile).configureEach {
-    options.release = 21
+    options.release = 25
     options.encoding = 'UTF-8'
     // Point VibeTags at the project root (Gradle runs javac in a worker whose CWD differs)
     // and set the project name used in generated llms.txt / llms-full.txt headers.
@@ -96,7 +106,7 @@ jacocoTestReport {
 
 pmd {
     consoleOutput = true
-    toolVersion = '7.24.0'
+    toolVersion = '7.25.0'
     ignoreFailures = false
     ruleSets = []  // use only our curated ruleset, not PMD's defaults
     ruleSetFiles = files("$rootDir/config/pmd-ruleset.xml")
@@ -104,6 +114,7 @@ pmd {
 tasks.named('pmdTest') { enabled = false }
 
 spotbugs {
+    toolVersion = '4.10.2'  // pin a SpotBugs that understands Java 25 class files
     effort = Effort.valueOf('MAX')
     reportLevel = Confidence.valueOf('LOW')
     ignoreFailures = false

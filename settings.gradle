@@ -1,1 +1,7 @@
+plugins {
+    // Lets the Java toolchain (JDK 25, see build.gradle) be auto-downloaded when no
+    // matching JDK is already installed, so the build is reproducible on any machine/CI.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
 rootProject.name = 'skill3'

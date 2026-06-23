@@ -2,7 +2,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/PIsberg/skill3/actions/workflows/ci.yml/badge.svg)](https://github.com/PIsberg/skill3/actions/workflows/ci.yml)
-[![Java 21+](https://img.shields.io/badge/Java-21%2B-orange?logo=openjdk)](https://adoptium.net/)
+[![Java 25](https://img.shields.io/badge/Java-25-orange?logo=openjdk)](https://adoptium.net/)
 [![Static analysis: Error Prone · PMD · SpotBugs · ArchUnit](https://img.shields.io/badge/static%20analysis-Error%20Prone%20%C2%B7%20PMD%20%C2%B7%20SpotBugs%20%C2%B7%20ArchUnit-success)](#development)
 
 Skill3 is a lightweight Java CLI that **relearns a technical skill** for an AI
@@ -137,7 +137,9 @@ or `anthropic` moves the model calls to a hosted endpoint.
 
 ## Requirements
 
-- **JDK 21+** (compiled with `--release 21`; the Gradle build daemon runs on JDK 21).
+- **JDK 25** (compiled with `--release 25`). Gradle provisions the JDK 25 toolchain
+  automatically (auto-detected or downloaded via the Foojay resolver), so you don't
+  need JDK 25 on `JAVA_HOME` — any JDK that runs Gradle will do.
 - A **local LLM** exposed over an OpenAI-compatible API (e.g. [Ollama](https://ollama.com)).
 - **Python 3.12–3.14** (only for `setup`; SkillSpector's supported range).
 - A **[Brave Search API](https://brave.com/search/api/) key** for discovery.

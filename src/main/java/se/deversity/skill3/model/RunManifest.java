@@ -29,6 +29,7 @@ public record RunManifest(
         boolean inputClean,
         int inputFindings,
         int inputRedactions,
+        int inputQuarantined,
         List<SourceRef> sources,
         Map<String, Long> timingsMs) {
 

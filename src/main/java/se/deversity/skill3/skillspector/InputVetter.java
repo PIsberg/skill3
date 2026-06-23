@@ -9,7 +9,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -23,15 +27,21 @@ import java.util.stream.Stream;
  *
  * <ol>
  *   <li>deterministically redacts secret-shaped tokens from each source in place — so a leaked
- *       key never reaches the model even when the scanner is unavailable; and</li>
+ *       key never reaches the model even when the scanner is unavailable;</li>
  *   <li>runs the same SkillSpector CLI over the assembled corpus to surface prompt-injection
- *       and other findings, which are reported (not silently dropped).</li>
+ *       and other findings, which are reported (not silently dropped); and</li>
+ *   <li><b>quarantines</b> any source carrying a high-severity finding — it is dropped from the
+ *       set handed to the synthesizer, so a poisoned page never shapes the skill. The finding is
+ *       still recorded (and still trips the run gate); quarantine is mitigation, not amnesty.</li>
  * </ol>
  *
  * <p>Sources are the pipeline's mutable carriers, so redaction is applied in place: the
- * synthesizer that runs next only ever sees the sanitized text.
+ * synthesizer that runs next only ever sees the sanitized, non-quarantined text.
  */
 public final class InputVetter {
+
+    /** Per-source scan filenames are {@code source-N.txt}; this maps a finding's file back to N. */
+    private static final Pattern SOURCE_FILE = Pattern.compile("source-(\\d+)\\.txt");
 
     private final SkillSpectorRunner runner;
 
@@ -46,12 +56,20 @@ public final class InputVetter {
      * @param redactions  how many source fields had a secret-shaped value redacted
      * @param vetted      whether SkillSpector actually scanned the corpus
      * @param clean       whether the scan found nothing (false when unavailable)
+     * @param kept        sources that survived vetting — the set to synthesize from
+     * @param quarantined sources dropped for carrying a high-severity finding
      */
-    public record Result(SkillSpectorReport report, int redactions, boolean vetted, boolean clean) {
+    public record Result(SkillSpectorReport report, int redactions, boolean vetted, boolean clean,
+                         List<Source> kept, List<Source> quarantined) {
+        public Result {
+            kept = List.copyOf(kept);
+            quarantined = List.copyOf(quarantined);
+        }
     }
 
     /**
-     * Redacts secrets from {@code sources} in place, then scans the corpus.
+     * Redacts secrets from {@code sources} in place, scans the corpus, and partitions the sources
+     * into those kept for synthesis and those quarantined for a high-severity finding.
      *
      * @param sources  the ranked sources about to be synthesized (mutated in place)
      * @param progress progress sink; use {@link ProgressBar#silent()} for non-interactive runs
@@ -70,18 +88,46 @@ public final class InputVetter {
             progress.step("SkillSpector scanning " + sources.size() + " source(s)");
             try {
                 SkillSpectorReport report = runner.scan(scanDir);
+                List<Source> kept = new ArrayList<>();
+                List<Source> quarantined = new ArrayList<>();
+                partition(sources, report, kept, quarantined);
                 progress.done(report.clean()
                         ? "input clean (" + redactions + " redaction(s))"
-                        : report.findings().size() + " finding(s), " + redactions + " redaction(s)");
-                return new Result(report, redactions, true, report.clean());
+                        : report.findings().size() + " finding(s), " + quarantined.size()
+                                + " quarantined, " + redactions + " redaction(s)");
+                return new Result(report, redactions, true, report.clean(), kept, quarantined);
             } catch (SkillSpectorUnavailableException e) {
-                // Secrets are already redacted; only the injection scan is skipped.
+                // Secrets are already redacted; only the injection scan (and so quarantine) is skipped.
                 progress.done("scanner unavailable — sources not scanned (" + redactions + " redaction(s))");
-                return new Result(null, redactions, false, false);
+                return new Result(null, redactions, false, false, sources, List.of());
             }
         } finally {
             deleteRecursively(scanDir);
         }
+    }
+
+    /** Splits {@code sources} into kept vs quarantined by mapping high-severity findings back to their source. */
+    private static void partition(List<Source> sources, SkillSpectorReport report,
+                                  List<Source> kept, List<Source> quarantined) {
+        Set<Integer> bad = new HashSet<>();
+        for (Finding f : report.highSeverityFindings()) {
+            int idx = sourceIndex(f.file());
+            if (idx >= 0 && idx < sources.size()) {
+                bad.add(idx);
+            }
+        }
+        for (int i = 0; i < sources.size(); i++) {
+            (bad.contains(i) ? quarantined : kept).add(sources.get(i));
+        }
+    }
+
+    /** {@return the 0-based source index encoded in a finding's {@code source-N.txt} file, or -1} */
+    private static int sourceIndex(String file) {
+        if (file == null) {
+            return -1;
+        }
+        Matcher m = SOURCE_FILE.matcher(file);
+        return m.find() ? Integer.parseInt(m.group(1)) - 1 : -1;
     }
 
     /** Redacts secret-shaped tokens in the source's text fields, returning the count of changed fields. */

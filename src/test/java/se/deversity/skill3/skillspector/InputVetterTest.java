@@ -65,6 +65,33 @@ class InputVetterTest {
     }
 
     @Test
+    void quarantinesOnlyTheSourceWithAHighSeverityFinding() throws Exception {
+        SkillSpectorRunner runner = mock(SkillSpectorRunner.class);
+        when(runner.scan(any())).thenReturn(new SkillSpectorReport(
+                List.of(new Finding("prompt-injection", "HIGH", "m", "source-2.txt", 1)), "raw"));
+
+        Source s1 = new Source("https://ok.example/a");
+        Source s2 = new Source("https://evil.example/b");
+        InputVetter.Result res = new InputVetter(runner).vet(List.of(s1, s2), ProgressBar.silent());
+
+        assertEquals(List.of(s1), res.kept());        // identity — the safe source survives
+        assertEquals(List.of(s2), res.quarantined()); // the flagged one is dropped
+    }
+
+    @Test
+    void keepsSourcesWhoseFindingsAreOnlyAdvisory() throws Exception {
+        SkillSpectorRunner runner = mock(SkillSpectorRunner.class);
+        when(runner.scan(any())).thenReturn(new SkillSpectorReport(
+                List.of(new Finding("style", "MEDIUM", "m", "source-1.txt", 1)), "raw"));
+
+        Source s1 = new Source("https://ok.example/a");
+        InputVetter.Result res = new InputVetter(runner).vet(List.of(s1), ProgressBar.silent());
+
+        assertTrue(res.quarantined().isEmpty()); // MEDIUM never quarantines
+        assertEquals(List.of(s1), res.kept());
+    }
+
+    @Test
     void unavailableScannerStillRedactsSecrets() throws Exception {
         SkillSpectorRunner runner = mock(SkillSpectorRunner.class);
         when(runner.scan(any()))

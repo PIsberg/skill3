@@ -244,7 +244,8 @@ class LearnPipelineE2ETest {
                 new Finding("z", "LOW", "m", "source-2.txt", 3)), "raw");
         LearnPipeline.Result res = new LearnPipeline.Result(
                 null, null, null, "", true, output,
-                new se.deversity.skill3.skillspector.InputVetter.Result(input, 0, true, false));
+                new se.deversity.skill3.skillspector.InputVetter.Result(
+                        input, 0, true, false, List.of(), List.of()));
 
         // HIGH (output) + CRITICAL (input) block; LOW is advisory and excluded.
         assertEquals(2, res.blockingFindings().size());
@@ -266,6 +267,19 @@ class LearnPipelineE2ETest {
 
         assertFalse(res.clean());
         assertFalse(res.blockingFindings().isEmpty());
+    }
+
+    @Test
+    void allSourcesQuarantinedThrows(@TempDir Path dir) throws Exception {
+        // The lone source is flagged high-severity on input -> quarantined -> nothing left to build.
+        Map<String, String> pages = Map.of("https://a.com/doc", page("2026-05-01", "x();"));
+        SkillSpectorRunner spector = mock(SkillSpectorRunner.class);
+        when(spector.scan(any())).thenReturn(new SkillSpectorReport(
+                List.of(new Finding("prompt-injection", "HIGH", "m", "source-1.txt", 1)), "raw"));
+
+        LearnPipeline pipeline = new LearnPipeline(
+                search("https://a.com/doc"), fetcher(pages), new DateExtractor(), model(), spector);
+        assertThrows(IllegalStateException.class, () -> pipeline.run(request(dir, false)));
     }
 
     @Test

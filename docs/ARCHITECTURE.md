@@ -36,7 +36,7 @@ graph TD
     Ingest --> Fresh[FreshnessFilter<br/>cutoff ≤ published ≤ today]
     Ingest --> Ranked[(ranked List&lt;Source&gt;)]
 
-    Ranked --> InVet[InputVetter<br/>redact secrets + scan<br/>Phase 3a, pre-synthesis]
+    Ranked --> InVet[InputVetter<br/>redact secrets · scan · quarantine<br/>Phase 3a, pre-synthesis]
     InVet --> Spector[SkillSpectorRunner<br/>--no-llm static scan]
     InVet --> Synth[Synthesizer + ChatModel<br/>delta prompt]
     Synth --> Verify[Verifier + ChatModel<br/>optional, --verify]
@@ -145,10 +145,14 @@ Both the **input corpus** and the **output skill** are scanned by the same
 - **Input (Phase 3a, before synthesis):** `InputVetter` first **deterministically
   redacts** secret-shaped tokens from every source in place — so a leaked key never
   reaches the model (or a hosted provider), even when the scanner is unavailable — then
-  scans the assembled corpus. The synthesizer only ever sees the sanitized sources, and
-  a live `ProgressBar` reports per-source progress. Injection findings are reported and
-  recorded in `run.json`, not silently dropped; the synthesis prompt additionally fences
-  all source text as untrusted DATA.
+  scans the assembled corpus (each source written as `source-N.txt`). Any source carrying
+  a **high-severity** finding is **quarantined**: dropped from the set handed to the
+  synthesizer, with a warning, so a poisoned page never shapes the skill (the finding is
+  still recorded and still trips the gate — quarantine is mitigation, not amnesty; if
+  *every* source is quarantined the run fails loudly). The synthesizer only ever sees the
+  sanitized, surviving sources, and a live `ProgressBar` reports per-source progress.
+  Lower-severity findings are reported and recorded in `run.json`, not silently dropped;
+  the synthesis prompt additionally fences all source text as untrusted DATA.
 - **Output (after synthesis):** `SelfCorrectionLoop` scans the draft, feeds findings to
   a `Reviser` (a local-LLM revision via `ChatModel`), and rescans — up to a bounded
   number of iterations. Residual findings are surfaced, never hidden.
@@ -195,6 +199,8 @@ is unit-tested with fakes and HTML fixtures — no live network or model. Concur
 - Future-dated sources are dropped by the freshness upper bound.
 - SkillSpector not installed → both input and output vetting skipped with a warning
   (skill still emitted; nothing is gated).
+- A source carries a high-severity finding → it is quarantined (dropped before synthesis)
+  with a warning; if **every** source is quarantined the run fails loudly.
 - High-severity findings remain after vetting → skill is written, but `learn` exits `3`
   (override with `--no-fail-on-findings`).
 - Synthesis/verification provider errors surface as `IOException` and fail the run.

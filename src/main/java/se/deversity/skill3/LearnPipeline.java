@@ -196,8 +196,10 @@ public class LearnPipeline {
         List<Source> ranked = discovery.ranked();
 
         // Phase 3a — vet the untrusted input corpus BEFORE it reaches the synthesizer LLM:
-        // redact secret-shaped tokens in place and scan the sources for prompt injection. The
-        // synthesizer below then only ever sees the sanitized sources.
+        // redact secret-shaped tokens in place, scan the sources for prompt injection, and
+        // quarantine any source with a high-severity finding. The synthesizer below then only
+        // ever sees the sanitized, non-quarantined sources.
+        List<Source> forSynthesis = ranked;
         InputVetter.Result inputVet = null;
         if (spector != null) {
             System.out.println("Vetting input corpus (prompt-injection / secret leakage) before synthesis...");
@@ -205,6 +207,13 @@ public class LearnPipeline {
             try {
                 inputVet = new InputVetter(spector).vet(ranked, new ProgressBar(System.out));
                 reportInputVetting(inputVet);
+                if (!inputVet.quarantined().isEmpty()) {
+                    forSynthesis = inputVet.kept();
+                    if (forSynthesis.isEmpty()) {
+                        throw new IllegalStateException("All " + ranked.size() + " source(s) quarantined by "
+                                + "input vetting (high-severity findings); nothing safe to synthesize from.");
+                    }
+                }
             } catch (IOException e) {
                 // A vetting I/O hiccup must not sink the run; the source markers still fence the data.
                 System.out.println("Input vetting error (continuing without it): " + e.getMessage());
@@ -213,7 +222,7 @@ public class LearnPipeline {
         }
 
         ContextBundle bundle = new ContextBundle(
-                req.skillName(), req.targetModel(), req.cutoff(), ranked);
+                req.skillName(), req.targetModel(), req.cutoff(), forSynthesis);
         Synthesizer synthesizer = richContext
                 ? new Synthesizer(model, 20, 20, 8)
                 : new Synthesizer(model);
@@ -272,13 +281,22 @@ public class LearnPipeline {
         if (!iv.vetted()) {
             System.out.println("Input vetting: SkillSpector unavailable; sources not scanned "
                     + "(secrets still redacted). Run `setup` to enable it.");
-        } else if (iv.clean()) {
+            return;
+        }
+        if (iv.clean()) {
             System.out.println("Input vetting: clean — no injection findings in the sources.");
-        } else {
-            System.out.println("WARNING: " + iv.report().findings().size()
-                    + " input finding(s) in the retrieved sources (treated as untrusted data):");
-            for (Finding f : iv.report().findings()) {
-                System.out.println("  - [" + f.severity() + "] " + f.category() + ": " + f.message());
+            return;
+        }
+        System.out.println("WARNING: " + iv.report().findings().size()
+                + " input finding(s) in the retrieved sources (treated as untrusted data):");
+        for (Finding f : iv.report().findings()) {
+            System.out.println("  - [" + f.severity() + "] " + f.category() + ": " + f.message());
+        }
+        if (!iv.quarantined().isEmpty()) {
+            System.out.println("WARNING: quarantined " + iv.quarantined().size() + " source(s) with "
+                    + "high-severity finding(s) — dropped before synthesis:");
+            for (Source s : iv.quarantined()) {
+                System.out.println("  - " + s.url);
             }
         }
     }
@@ -299,12 +317,13 @@ public class LearnPipeline {
         int inputFindings = inputVet == null || inputVet.report() == null
                 ? 0 : inputVet.report().findings().size();
         int inputRedactions = inputVet == null ? 0 : inputVet.redactions();
+        int inputQuarantined = inputVet == null ? 0 : inputVet.quarantined().size();
 
         RunManifest manifest = new RunManifest(
                 "skill3", req.skillName(), req.targetModel(), req.cutoff().iso(), today.toString(),
                 discovery.queries(), refs.size(), verify, vetted,
                 report != null && report.clean(), report == null ? 0 : report.findings().size(),
-                inputVetted, inputClean, inputFindings, inputRedactions,
+                inputVetted, inputClean, inputFindings, inputRedactions, inputQuarantined,
                 refs, timings);
 
         Path manifestFile = req.outputDir().resolve("run.json");

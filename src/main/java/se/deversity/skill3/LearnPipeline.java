@@ -22,12 +22,18 @@ import se.deversity.skill3.skillspector.SkillSpectorRunner;
 import se.deversity.skill3.skillspector.SkillSpectorUnavailableException;
 import se.deversity.skill3.web.WebPreviewGenerator;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import se.deversity.skill3.model.RunManifest;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -51,10 +57,18 @@ public class LearnPipeline {
     }
 
     /** Outcome of one run. {@code report} is null when vetting was skipped. */
-    public record Result(Path skillFile, Path htmlFile, String skillMd,
+    public record Result(Path skillFile, Path htmlFile, Path manifestFile, String skillMd,
                          boolean vetted, SkillSpectorReport report) {
         public boolean clean() {
             return report != null && report.clean();
+        }
+    }
+
+    /** Outcome of discovery (phases 1–2): the queries used and the ranked sources they produced. */
+    public record Discovery(List<String> queries, List<Source> ranked) {
+        public Discovery {
+            queries = List.copyOf(queries);
+            ranked = List.copyOf(ranked);
         }
     }
 
@@ -85,29 +99,10 @@ public class LearnPipeline {
     /** Run the accuracy gate (re-ground claims against the sources) after synthesis. */
     private final boolean verify;
 
+    /** Convenience for the common case: default {@link Options}. */
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
                          ChatModel model, SkillSpectorRunner spector) {
         this(search, fetcher, dates, model, spector, Options.defaults());
-    }
-
-    public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
-                         ChatModel model, SkillSpectorRunner spector, boolean richContext) {
-        this(search, fetcher, dates, model, spector,
-                new Options(5, 2, 3, richContext, Set.of(), false));
-    }
-
-    public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
-                         ChatModel model, SkillSpectorRunner spector,
-                         int maxResults, int minAgreement, int maxIterations) {
-        this(search, fetcher, dates, model, spector,
-                new Options(maxResults, minAgreement, maxIterations, false, Set.of(), false));
-    }
-
-    public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
-                         ChatModel model, SkillSpectorRunner spector,
-                         int maxResults, int minAgreement, int maxIterations, boolean richContext) {
-        this(search, fetcher, dates, model, spector,
-                new Options(maxResults, minAgreement, maxIterations, richContext, Set.of(), false));
     }
 
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
@@ -129,9 +124,10 @@ public class LearnPipeline {
      * Phases 1–2 only: plan (unless the search client is a curated corpus), retrieve, then rank.
      * Exposed so {@code --dry-run} can inspect discovery without spending model calls on synthesis.
      *
-     * @return the ranked sources, best-first (never empty — throws if discovery yields nothing)
+     * @return the queries used and the ranked sources, best-first (ranked is never empty —
+     *         throws if discovery yields nothing)
      */
-    public List<Source> discover(Request req) throws IOException {
+    public Discovery discover(Request req) throws IOException {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
 
         RetrievalService retrieval = new RetrievalService(
@@ -163,7 +159,7 @@ public class LearnPipeline {
         if (ranked.isEmpty()) {
             throw new IllegalStateException("All sources filtered out (try without --strict-cutoff).");
         }
-        return ranked;
+        return new Discovery(queries, ranked);
     }
 
     public Result run(Request req) throws IOException {
@@ -171,20 +167,28 @@ public class LearnPipeline {
         Path skillFile = req.outputDir().resolve("SKILL.md");
 
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        Map<String, Long> timings = new LinkedHashMap<>();
 
-        List<Source> ranked = discover(req);
+        long t0 = System.nanoTime();
+        Discovery discovery = discover(req);
+        timings.put("discoverMs", elapsedMs(t0));
+        List<Source> ranked = discovery.ranked();
 
         ContextBundle bundle = new ContextBundle(
                 req.skillName(), req.targetModel(), req.cutoff(), ranked);
         Synthesizer synthesizer = richContext
                 ? new Synthesizer(model, 20, 20, 8)
                 : new Synthesizer(model);
+        long tSynth = System.nanoTime();
         String skillMd = synthesizer.synthesize(bundle);
+        timings.put("synthesizeMs", elapsedMs(tSynth));
 
         if (verify) {
             System.out.println("Verifying claims against sources...");
+            long tVerify = System.nanoTime();
             skillMd = SkillMdPostProcessor.render(
                     new Verifier(model).verify(skillMd, bundle, today), bundle, today);
+            timings.put("verifyMs", elapsedMs(tVerify));
         }
 
         Files.writeString(skillFile, skillMd);
@@ -195,6 +199,7 @@ public class LearnPipeline {
             Reviser reviser = (current, rep) -> SkillMdPostProcessor.render(
                     model.complete(FIX_SYSTEM, fixPrompt(current, rep)), bundle,
                     LocalDate.now(ZoneId.systemDefault()));
+            long tVet = System.nanoTime();
             try {
                 SelfCorrectionLoop.Result res =
                         new SelfCorrectionLoop(spector, reviser, maxIterations)
@@ -205,12 +210,42 @@ public class LearnPipeline {
             } catch (SkillSpectorUnavailableException e) {
                 vetted = false; // skipped; skill still emitted
             }
+            timings.put("vetMs", elapsedMs(tVet));
         }
 
         Path html = req.outputDir().resolve("index.html");
         Files.writeString(html, new WebPreviewGenerator().render(skillMd));
 
-        return new Result(skillFile, html, skillMd, vetted, report);
+        timings.put("totalMs", elapsedMs(t0));
+        Path manifestFile = writeManifest(req, discovery, today, vetted, report, timings);
+
+        return new Result(skillFile, html, manifestFile, skillMd, vetted, report);
+    }
+
+    private static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000;
+    }
+
+    /** Writes the {@code run.json} provenance manifest next to the skill and returns its path. */
+    private Path writeManifest(Request req, Discovery discovery, LocalDate today,
+                               boolean vetted, SkillSpectorReport report, Map<String, Long> timings)
+            throws IOException {
+        List<RunManifest.SourceRef> refs = new ArrayList<>();
+        for (Source s : discovery.ranked()) {
+            refs.add(new RunManifest.SourceRef(
+                    s.url, s.published == null ? null : s.published.toString(),
+                    s.authority, s.recencyWeight, s.combinedScore, s.postCutoff, s.consensusCount));
+        }
+        RunManifest manifest = new RunManifest(
+                "skill3", req.skillName(), req.targetModel(), req.cutoff().iso(), today.toString(),
+                discovery.queries(), refs.size(), verify, vetted,
+                report != null && report.clean(), report == null ? 0 : report.findings().size(),
+                refs, timings);
+
+        Path manifestFile = req.outputDir().resolve("run.json");
+        Files.writeString(manifestFile,
+                new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(manifest));
+        return manifestFile;
     }
 
     static String fixPrompt(String current, SkillSpectorReport report) {

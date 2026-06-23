@@ -4,14 +4,16 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import se.deversity.skill3.LearnPipeline;
-import se.deversity.skill3.llm.AnthropicChatModel;
 import se.deversity.skill3.llm.ChatModel;
-import se.deversity.skill3.llm.LocalLlmClient;
+import se.deversity.skill3.llm.LlmProviderFactory;
 import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.model.Source;
 import se.deversity.skill3.pipeline.BraveSearchClient;
+import se.deversity.skill3.pipeline.CachingPageFetcher;
+import se.deversity.skill3.pipeline.CachingSearchClient;
 import se.deversity.skill3.pipeline.CutoffResolver;
 import se.deversity.skill3.pipeline.DateExtractor;
+import se.deversity.skill3.pipeline.DiskCache;
 import se.deversity.skill3.pipeline.FileCorpus;
 import se.deversity.skill3.pipeline.HttpPageFetcher;
 import se.deversity.skill3.pipeline.PageFetcher;
@@ -21,6 +23,7 @@ import se.deversity.skill3.skillspector.SkillSpectorRunner;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -32,6 +35,9 @@ import java.util.concurrent.Callable;
         mixinStandardHelpOptions = true,
         description = "Discover, evaluate, synthesize and vet a SKILL.md for a topic.")
 public class LearnCommand implements Callable<Integer> {
+
+    /** Days a cached search result or fetched page stays valid before it's re-fetched. */
+    private static final int CACHE_TTL_DAYS = 7;
 
     @Parameters(index = "0", description = "Skill/topic to learn (e.g. mcp, jdk26).")
     String skillName;
@@ -96,6 +102,11 @@ public class LearnCommand implements Callable<Integer> {
                     + "Brave. When set, no Brave key or network is needed for discovery.")
     String inputFile;
 
+    @Option(names = "--no-cache",
+            description = "Bypass the on-disk cache of search results and fetched pages "
+                    + "(default cache: ~/.skill3/cache, " + CACHE_TTL_DAYS + "-day TTL).")
+    boolean noCache;
+
     @Option(names = "--output-dir", description = "Output dir. Default: ./skills/<skill-name>")
     String outputDir;
 
@@ -139,34 +150,28 @@ public class LearnCommand implements Callable<Integer> {
         } else {
             String freshness = cutoff.freshnessRange(LocalDate.now(ZoneId.systemDefault()));
             System.out.println("Search window: " + freshness);
-            search = new BraveSearchClient(key, freshness);
-            fetcher = new HttpPageFetcher();
+            SearchClient liveSearch = new BraveSearchClient(key, freshness);
+            PageFetcher livePages = new HttpPageFetcher();
+            if (noCache) {
+                search = liveSearch;
+                fetcher = livePages;
+            } else {
+                Path cacheDir = Path.of(System.getProperty("user.home"), ".skill3", "cache");
+                DiskCache cache = new DiskCache(cacheDir, Duration.ofDays(CACHE_TTL_DAYS));
+                search = new CachingSearchClient(liveSearch, cache);
+                fetcher = new CachingPageFetcher(livePages, cache);
+                System.out.println("Cache: " + cacheDir + " (--no-cache to bypass)");
+            }
         }
 
-        final ChatModel chat;
         String provider = llmProvider == null ? "local" : llmProvider.toLowerCase(Locale.ROOT);
-        switch (provider) {
-            case "anthropic" -> {
-                String akey = llmKey != null ? llmKey : System.getenv("ANTHROPIC_API_KEY");
-                if (akey == null || akey.isBlank()) {
-                    System.err.println("anthropic provider needs a key: pass --llm-key or set ANTHROPIC_API_KEY.");
-                    return 2;
-                }
-                chat = new AnthropicChatModel(akey, llmModel, maxTokens);
-            }
-            case "openai" -> {
-                String okey = llmKey != null ? llmKey : System.getenv("LLM_API_KEY");
-                if (okey == null || okey.isBlank()) {
-                    System.err.println("openai provider needs a key: pass --llm-key or set LLM_API_KEY.");
-                    return 2;
-                }
-                chat = new LocalLlmClient(llmEndpoint, llmModel, maxTokens, okey, temperature);
-            }
-            case "local" -> chat = new LocalLlmClient(llmEndpoint, llmModel, maxTokens, llmKey, temperature);
-            default -> {
-                System.err.println("Unknown --llm-provider '" + provider + "' (use local | openai | anthropic).");
-                return 2;
-            }
+        final ChatModel chat;
+        try {
+            chat = LlmProviderFactory.create(new LlmProviderFactory.Config(
+                    provider, llmEndpoint, llmModel, maxTokens, llmKey, temperature));
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            return 2;
         }
 
         java.util.Set<String> authoritativeHosts = authoritative == null
@@ -176,7 +181,7 @@ public class LearnCommand implements Callable<Integer> {
         // Verification is the accuracy gate. Default it ON for capable hosted providers and OFF for
         // local (a weak local model tends to rewrite rather than ground). Either way, warn loudly
         // when shipping unverified so "looks clean" is never mistaken for "checked against sources".
-        boolean capableProvider = provider.equals("openai") || provider.equals("anthropic");
+        boolean capableProvider = LlmProviderFactory.isCapable(provider);
         boolean effectiveVerify = verify != null ? verify : capableProvider;
         if (!effectiveVerify) {
             System.out.println("WARNING: shipping UNVERIFIED synthesis — claims are NOT re-grounded "
@@ -200,8 +205,10 @@ public class LearnCommand implements Callable<Integer> {
 
         if (dryRun) {
             try {
-                List<Source> ranked = pipeline.discover(request);
-                System.out.println("Dry run — " + ranked.size() + " ranked source(s), best first:");
+                LearnPipeline.Discovery discovery = pipeline.discover(request);
+                List<Source> ranked = discovery.ranked();
+                System.out.println("Dry run — " + discovery.queries().size() + " quer(ies), "
+                        + ranked.size() + " ranked source(s), best first:");
                 for (Source s : ranked) {
                     System.out.printf(Locale.ROOT,
                             "  [score %.2f] %s%n"
@@ -229,6 +236,7 @@ public class LearnCommand implements Callable<Integer> {
             System.out.println("Done. Wrote:");
             System.out.println("  " + res.skillFile());
             System.out.println("  " + res.htmlFile());
+            System.out.println("  " + res.manifestFile());
             return 0;
         } catch (IllegalStateException e) {
             System.err.println(e.getMessage());

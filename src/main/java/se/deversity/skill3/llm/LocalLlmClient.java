@@ -3,6 +3,7 @@ package se.deversity.skill3.llm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.Nullable;
+import se.deversity.skill3.net.HttpRetry;
 import se.deversity.vibetags.annotations.AIPrivacy;
 import se.deversity.vibetags.annotations.AISecure;
 
@@ -26,6 +27,7 @@ import java.util.Map;
 public class LocalLlmClient implements ChatModel {
 
     private static final int DEFAULT_MAX_TOKENS = 4096;
+    private static final HttpRetry RETRY = new HttpRetry();
 
     private final String endpoint;
     private final String model;
@@ -91,7 +93,8 @@ public class LocalLlmClient implements ChatModel {
         }
         HttpRequest req = builder.POST(HttpRequest.BodyPublishers.ofString(json)).build();
         try {
-            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> resp = RETRY.execute(
+                    () -> http.send(req, HttpResponse.BodyHandlers.ofString()));
             if (resp.statusCode() / 100 != 2) {
                 // Never echo the body: OpenAI-compatible servers sometimes reflect the request
                 // (including the Authorization header) in error responses. Status + size only.

@@ -56,6 +56,9 @@
     <element path="se.deversity.skill3.llm.AnthropicChatModel">
       <aspect>Anthropic API credential handling and hosted-provider network egress</aspect>
     </element>
+    <element path="se.deversity.skill3.llm.LlmProviderFactory">
+      <aspect>LLM provider credential resolution and model selection</aspect>
+    </element>
     <element path="se.deversity.skill3.llm.LocalLlmClient">
       <aspect>outbound LLM-provider credential (Bearer token) handling</aspect>
     </element>

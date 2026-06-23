@@ -77,7 +77,8 @@ class BraveSearchClientTest {
     @Test
     void throwsOnNonSuccess() throws Exception {
         HttpClient http = mock(HttpClient.class);
-        doReturn(response(429, "rate limited")).when(http).send(any(), any());
+        // 401 is non-transient, so it surfaces immediately (transient 429/5xx retry is in HttpRetryTest).
+        doReturn(response(401, "unauthorized")).when(http).send(any(), any());
 
         BraveSearchClient client = new BraveSearchClient("key", http);
         assertThrows(IOException.class, () -> client.search("mcp", 10));

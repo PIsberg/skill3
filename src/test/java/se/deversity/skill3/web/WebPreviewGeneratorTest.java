@@ -44,4 +44,37 @@ class WebPreviewGeneratorTest {
         assertTrue(html.contains("<li>one</li>"));
         assertTrue(html.contains("</ul>"));
     }
+
+    @Test
+    void rendersInlineLinksCodeBoldAndItalic() {
+        String html = WebPreviewGenerator.toHtml(
+                "See [the spec](https://example.com/spec) for **big** `_meta` and _emphasis_.");
+        assertTrue(html.contains("<a href=\"https://example.com/spec\" target=\"_blank\" rel=\"noopener noreferrer\">the spec</a>"));
+        assertTrue(html.contains("<strong>big</strong>"));
+        assertTrue(html.contains("<code>_meta</code>"));
+        assertTrue(html.contains("<em>emphasis</em>"));
+    }
+
+    @Test
+    void rendersTheItalicProvenanceFooterAsALink() {
+        String html = WebPreviewGenerator.toHtml(
+                "_Created with [skill3](https://github.com/PIsberg/skill3)._");
+        assertTrue(html.contains("<a href=\"https://github.com/PIsberg/skill3\""));
+        assertTrue(html.contains("<em>"));
+    }
+
+    @Test
+    void doesNotItalicizeLoneLeadingUnderscoreIdentifiers() {
+        // `_meta` appears all over MCP docs — a single leading underscore must stay literal.
+        String html = WebPreviewGenerator.toHtml("The _meta field is new and the _internal flag too.");
+        assertFalse(html.contains("<em>"));
+        assertTrue(html.contains("_meta field"));
+    }
+
+    @Test
+    void doesNotRenderMarkdownInsideCodeBlocks() {
+        String html = WebPreviewGenerator.toHtml("```\n[x](y) **b**\n```");
+        assertFalse(html.contains("<a href"));
+        assertFalse(html.contains("<strong>"));
+    }
 }

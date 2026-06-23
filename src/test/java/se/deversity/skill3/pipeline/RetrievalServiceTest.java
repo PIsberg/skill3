@@ -1,6 +1,8 @@
 package se.deversity.skill3.pipeline;
 
 import org.junit.jupiter.api.Test;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import se.deversity.skill3.model.Source;
 
 import java.time.LocalDate;
@@ -8,8 +10,29 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RetrievalServiceTest {
+
+    @Test
+    void extractContentDropsSiteChromeBoilerplate() {
+        Document doc = Jsoup.parse("""
+                <html><body>
+                  <nav><a href='/'>Home</a> Navigation links that are quite long indeed here</nav>
+                  <aside class='sidebar'>Sidebar promo text that is also sufficiently long to pass</aside>
+                  <main>
+                    <p>The 2026-03 revision adds the _meta field to every request envelope now.</p>
+                  </main>
+                  <footer>Copyright notice and a privacy policy link that is long enough too</footer>
+                </body></html>""");
+        Source s = new Source("https://example.com/doc");
+        RetrievalService.extractContent(doc, s);
+
+        assertTrue(s.excerpts.stream().anyMatch(e -> e.contains("_meta field")));
+        assertFalse(s.excerpts.stream().anyMatch(e -> e.contains("Navigation links")));
+        assertFalse(s.excerpts.stream().anyMatch(e -> e.contains("Sidebar promo")));
+        assertFalse(s.excerpts.stream().anyMatch(e -> e.contains("privacy policy")));
+    }
 
     @Test
     void retrievesAndEnrichesSources() throws Exception {

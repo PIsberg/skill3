@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import se.deversity.skill3.llm.ChatModel;
 import se.deversity.skill3.model.Cutoff;
+import se.deversity.skill3.model.Source;
 import se.deversity.skill3.pipeline.DateExtractor;
 import se.deversity.skill3.pipeline.FileCorpus;
 import se.deversity.skill3.pipeline.PageFetcher;
@@ -125,6 +126,47 @@ class LearnPipelineE2ETest {
         assertTrue(md.contains("name: mcp"));
         assertTrue(res.vetted());
         assertTrue(res.clean());
+    }
+
+    @Test
+    void curatedCorpusDiscoversWithoutCallingTheModel(@TempDir Path dir) throws Exception {
+        // A FileCorpus is a curated result set, so discovery must not spend a query-planning call.
+        Path corpusFile = dir.resolve("corpus.txt");
+        Files.writeString(corpusFile, """
+                === SOURCE ===
+                url: https://modelcontextprotocol.io/spec
+                date: 2026-05-01
+
+                A sufficiently long paragraph describing the 2026-05 revision and its new flags.
+                """);
+        FileCorpus corpus = FileCorpus.load(corpusFile);
+        ChatModel mustNotRun = (system, user) -> {
+            throw new IllegalStateException("model must not be called for a curated corpus");
+        };
+
+        LearnPipeline pipeline = new LearnPipeline(corpus, corpus, new DateExtractor(), mustNotRun, null);
+        List<Source> ranked = pipeline.discover(request(dir, false));
+
+        assertEquals(1, ranked.size());
+        assertEquals("https://modelcontextprotocol.io/spec", ranked.get(0).url);
+    }
+
+    @Test
+    void discoverReturnsRankedSourcesForDryRun(@TempDir Path dir) throws Exception {
+        Map<String, String> pages = Map.of(
+                "https://modelcontextprotocol.io/spec", page("2026-05-01", "shared();"),
+                "https://github.com/org/repo", page("2026-04-01", "shared();"));
+
+        LearnPipeline pipeline = new LearnPipeline(
+                search("https://modelcontextprotocol.io/spec", "https://github.com/org/repo"),
+                fetcher(pages), new DateExtractor(), model(), null);
+
+        List<Source> ranked = pipeline.discover(request(dir, false));
+
+        assertEquals(2, ranked.size());
+        // Best-first: the post-cutoff, higher-combined-score source leads.
+        assertTrue(ranked.get(0).combinedScore >= ranked.get(1).combinedScore);
+        assertFalse(Files.exists(dir.resolve("SKILL.md"))); // discovery writes nothing
     }
 
     @Test

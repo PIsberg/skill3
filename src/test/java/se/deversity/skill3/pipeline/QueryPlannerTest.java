@@ -35,6 +35,17 @@ class QueryPlannerTest {
     }
 
     @Test
+    void prependsTopicToQueriesThatLackIt() {
+        ChatModel model = (system, user) ->
+                "what is new in the 2026 revision\nmcp breaking changes\nlatest spec updates";
+        List<String> queries = new QueryPlanner(model).plan("mcp", CUTOFF, TODAY);
+        assertEquals(List.of(
+                "mcp what is new in the 2026 revision",
+                "mcp breaking changes",
+                "mcp latest spec updates"), queries);
+    }
+
+    @Test
     void fallsBackToTopicWhenEmpty() {
         assertEquals(List.of("trump"), new QueryPlanner((s, u) -> "\n  \n").plan("trump", CUTOFF, TODAY));
     }

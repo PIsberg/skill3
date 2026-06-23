@@ -4,16 +4,20 @@ import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.model.Source;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 /**
  * Cutoff-anchored freshness scoring. Each source is scored
- * {@code authority * recencyWeight}; post-cutoff publication earns the full
- * recency weight. Sorting by the combined score realizes the override rule: a
- * post-cutoff authoritative source (1.0 x 1.0) always outranks pre-cutoff content
- * (<= 1.0 x 0.5). With {@code strict}, pre-cutoff and undated sources are dropped.
+ * {@code authority * recencyWeight}. Post-cutoff publication earns a recency weight
+ * that <em>decays with age</em>: {@value #RECENCY_POST_CUTOFF} for a source published
+ * today, falling linearly to {@value #RECENCY_POST_FLOOR} for one published right after
+ * the cutoff — so in fast-moving topics last week's source outranks one from months ago.
+ * The floor stays above the pre-cutoff weight ({@value #RECENCY_PRE_CUTOFF}), so a
+ * post-cutoff source still outranks pre-cutoff content of equal authority. With
+ * {@code strict}, pre-cutoff and undated sources are dropped.
  *
  * <p>An upper bound ({@code today}) drops sources published after the run date —
  * Brave's freshness window is only a hint, and a future-dated page is a leak or a
@@ -22,6 +26,8 @@ import java.util.List;
 public class FreshnessFilter {
 
     static final double RECENCY_POST_CUTOFF = 1.0;
+    /** Lower bound of the post-cutoff decay band (a source published at the cutoff edge). */
+    static final double RECENCY_POST_FLOOR = 0.6;
     static final double RECENCY_PRE_CUTOFF = 0.5;
     static final double RECENCY_UNDATED = 0.3;
 
@@ -63,6 +69,24 @@ public class FreshnessFilter {
         if (s.published == null) {
             return RECENCY_UNDATED;
         }
-        return s.postCutoff ? RECENCY_POST_CUTOFF : RECENCY_PRE_CUTOFF;
+        return s.postCutoff ? postCutoffWeight(s.published) : RECENCY_PRE_CUTOFF;
+    }
+
+    /**
+     * Linear decay across the post-cutoff window: full weight at {@code today}, falling to
+     * {@link #RECENCY_POST_FLOOR} at the cutoff edge. Falls back to full weight when there is
+     * no real run date (e.g. {@link LocalDate#MAX}) so scoring stays stable without a today.
+     */
+    private double postCutoffWeight(LocalDate published) {
+        if (today.equals(LocalDate.MAX)) {
+            return RECENCY_POST_CUTOFF;
+        }
+        long span = ChronoUnit.DAYS.between(cutoff.month().atEndOfMonth(), today);
+        if (span <= 0) {
+            return RECENCY_POST_CUTOFF;
+        }
+        long age = ChronoUnit.DAYS.between(published, today); // 0 == published today
+        double ageFraction = Math.min(1.0, Math.max(0.0, (double) age / span));
+        return RECENCY_POST_CUTOFF - ageFraction * (RECENCY_POST_CUTOFF - RECENCY_POST_FLOOR);
     }
 }

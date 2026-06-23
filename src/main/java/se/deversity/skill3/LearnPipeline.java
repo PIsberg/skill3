@@ -125,20 +125,31 @@ public class LearnPipeline {
         this.verify = options.verify();
     }
 
-    public Result run(Request req) throws IOException {
-        Files.createDirectories(req.outputDir());
-        Path skillFile = req.outputDir().resolve("SKILL.md");
-
+    /**
+     * Phases 1–2 only: plan (unless the search client is a curated corpus), retrieve, then rank.
+     * Exposed so {@code --dry-run} can inspect discovery without spending model calls on synthesis.
+     *
+     * @return the ranked sources, best-first (never empty — throws if discovery yields nothing)
+     */
+    public List<Source> discover(Request req) throws IOException {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
 
         RetrievalService retrieval = new RetrievalService(
                 search, fetcher, dates, new AuthorityScorer(authoritativeHosts));
 
-        // Ask the model what to search for — topic-agnostic, post-cutoff-focused.
-        List<String> queries = new QueryPlanner(model).plan(req.skillName(), req.cutoff(), today);
-        System.out.println("Planned " + queries.size() + " discovery queries:");
-        for (String q : queries) {
-            System.out.println("  - " + q);
+        final List<String> queries;
+        if (search.isCuratedCorpus()) {
+            // The corpus is already the curated result set; planning queries would only waste a
+            // model call (FileCorpus ignores them). Use the topic as a nominal query.
+            System.out.println("Discovery: curated input corpus (skipping query planning).");
+            queries = List.of(req.skillName());
+        } else {
+            // Ask the model what to search for — topic-agnostic, post-cutoff-focused.
+            queries = new QueryPlanner(model).plan(req.skillName(), req.cutoff(), today);
+            System.out.println("Planned " + queries.size() + " discovery queries:");
+            for (String q : queries) {
+                System.out.println("  - " + q);
+            }
         }
 
         List<Source> sources = retrieval.retrieve(queries, maxResults);
@@ -152,6 +163,16 @@ public class LearnPipeline {
         if (ranked.isEmpty()) {
             throw new IllegalStateException("All sources filtered out (try without --strict-cutoff).");
         }
+        return ranked;
+    }
+
+    public Result run(Request req) throws IOException {
+        Files.createDirectories(req.outputDir());
+        Path skillFile = req.outputDir().resolve("SKILL.md");
+
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+
+        List<Source> ranked = discover(req);
 
         ContextBundle bundle = new ContextBundle(
                 req.skillName(), req.targetModel(), req.cutoff(), ranked);

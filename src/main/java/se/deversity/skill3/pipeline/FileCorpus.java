@@ -101,6 +101,12 @@ public final class FileCorpus implements SearchClient, PageFetcher {
         return new ArrayList<>(htmlByUrl.keySet());
     }
 
+    /** The file is the curated result set, so the pipeline should not plan or run live queries. */
+    @Override
+    public boolean isCuratedCorpus() {
+        return true;
+    }
+
     /** {@return the stored body for {@code url}, as synthesized HTML} */
     @Override
     public String fetch(String url) throws IOException {

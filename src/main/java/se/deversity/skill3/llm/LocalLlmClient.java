@@ -93,8 +93,10 @@ public class LocalLlmClient implements ChatModel {
         try {
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() / 100 != 2) {
+                // Never echo the body: OpenAI-compatible servers sometimes reflect the request
+                // (including the Authorization header) in error responses. Status + size only.
                 throw new IOException("Local LLM returned HTTP " + resp.statusCode()
-                        + ": " + resp.body());
+                        + " (" + resp.body().length() + "-char body withheld)");
             }
             JsonNode root = mapper.readTree(resp.body());
             JsonNode content = root.path("choices").path(0).path("message").path("content");

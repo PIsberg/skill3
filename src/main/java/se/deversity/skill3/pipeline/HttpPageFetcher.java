@@ -1,24 +1,43 @@
 package se.deversity.skill3.pipeline;
 
+import se.deversity.vibetags.annotations.AISecure;
+
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Locale;
 
-/** {@link PageFetcher} over {@link HttpClient}, following redirects. */
+/**
+ * {@link PageFetcher} over {@link HttpClient}. URLs come from search results or a user
+ * input file, i.e. partly untrusted, so each request is guarded against SSRF: only
+ * {@code http}/{@code https} is allowed and the resolved host must be a public address —
+ * loopback, link-local (incl. the cloud metadata IP {@code 169.254.169.254}), and private
+ * ranges are refused. Redirects are followed manually so every hop is re-validated (a
+ * public URL can 30x to an internal one), and the response body is size-capped.
+ *
+ * <p>Note: DNS rebinding (resolving to a public IP at the check, a private one at connect)
+ * is not fully prevented — this is defence-in-depth against obviously-internal targets.
+ */
+@AISecure(aspect = "outbound page fetch egress for partly-untrusted URLs; SSRF guard must not be weakened")
 public class HttpPageFetcher implements PageFetcher {
 
     private static final String UA =
             "Mozilla/5.0 (compatible; Skill3/0.1; +https://github.com/)";
+    private static final int MAX_REDIRECTS = 5;
+    /** Cap on the returned body; documentation pages well under this, runaway responses bounded. */
+    private static final int MAX_CHARS = 8 * 1024 * 1024;
 
     private final HttpClient http;
 
     public HttpPageFetcher() {
         this(HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                .followRedirects(HttpClient.Redirect.NEVER) // follow manually to re-validate each hop
                 .build());
     }
 
@@ -28,21 +47,82 @@ public class HttpPageFetcher implements PageFetcher {
 
     @Override
     public String fetch(String url) throws IOException {
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+        URI uri = validate(url);
+        for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
+            HttpResponse<String> resp = send(uri);
+            int code = resp.statusCode();
+            if (code / 100 == 2) {
+                String body = resp.body();
+                return body.length() > MAX_CHARS ? body.substring(0, MAX_CHARS) : body;
+            }
+            if (code / 100 != 3) {
+                throw new IOException("Fetch of " + uri + " returned HTTP " + code);
+            }
+            String location = resp.headers().firstValue("location").orElse(null);
+            if (location == null) {
+                throw new IOException("Redirect with no Location header: " + uri);
+            }
+            uri = validate(uri.resolve(location).toString()); // re-validate every hop (SSRF)
+        }
+        throw new IOException("Too many redirects fetching " + url);
+    }
+
+    private HttpResponse<String> send(URI uri) throws IOException {
+        HttpRequest req = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(30))
                 .header("User-Agent", UA)
                 .header("Accept", "text/html,application/xhtml+xml")
                 .GET()
                 .build();
         try {
-            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() / 100 != 2) {
-                throw new IOException("Fetch of " + url + " returned HTTP " + resp.statusCode());
-            }
-            return resp.body();
+            return http.send(req, HttpResponse.BodyHandlers.ofString());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IOException("Fetch interrupted: " + url, e);
+            throw new IOException("Fetch interrupted: " + uri, e);
         }
+    }
+
+    /**
+     * Parses {@code url} and rejects anything unsafe to fetch: non-http(s) schemes and hosts
+     * that resolve to a loopback, any-local, link-local or private address.
+     *
+     * @return the validated URI
+     * @throws IOException if the URL is malformed, non-http(s), or resolves to a non-public host
+     */
+    static URI validate(String url) throws IOException {
+        URI uri;
+        try {
+            uri = URI.create(url.strip());
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Malformed URL: " + url, e);
+        }
+        String scheme = uri.getScheme();
+        if (scheme == null
+                || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
+            throw new IOException("Refusing non-http(s) URL: " + url);
+        }
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            throw new IOException("URL has no host: " + url);
+        }
+        try {
+            for (InetAddress addr : InetAddress.getAllByName(host)) {
+                if (addr.isLoopbackAddress() || addr.isAnyLocalAddress()
+                        || addr.isLinkLocalAddress() || addr.isSiteLocalAddress()
+                        || isUniqueLocalV6(addr)) {
+                    throw new IOException("Refusing to fetch private/internal address: "
+                            + host.toLowerCase(Locale.ROOT) + " -> " + addr.getHostAddress());
+                }
+            }
+        } catch (UnknownHostException e) {
+            throw new IOException("Cannot resolve host: " + host, e);
+        }
+        return uri;
+    }
+
+    /** IPv6 unique-local block fc00::/7, which {@link InetAddress} does not flag as site-local. */
+    private static boolean isUniqueLocalV6(InetAddress addr) {
+        byte[] b = addr.getAddress();
+        return b.length == 16 && (b[0] & 0xfe) == 0xfc;
     }
 }

@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -54,17 +55,48 @@ public class QueryPlanner {
                 + "Write up to " + maxQueries + " web-search queries that, run together, would surface "
                 + "the most important developments about \"" + topic + "\" since " + cutoff.iso()
                 + ". Cover distinct facets, not minor variations. Include one broad \"what is new\" "
-                + "query; if the topic is a person, organisation, or product, add queries for its "
-                + "major activity areas. One query per line.";
+                + "major activity areas. Every query MUST contain \"" + topic + "\" (or a clear "
+                + "synonym) so results stay scoped to it. One query per line.";
         try {
             List<String> queries = parse(model.complete(SYSTEM, user));
             if (!queries.isEmpty()) {
-                return queries;
+                return scopeAll(queries, topic);
             }
         } catch (IOException e) {
             System.err.println("  ! query planning failed (" + e.getMessage() + "); using the topic alone.");
         }
         return List.of(topic);
+    }
+
+    /**
+     * Keeps every query scoped to the topic. The prompt asks the model to do this, but models
+     * drift (e.g. "what changed in the 2026 revision" with no topic word), which yields noisy,
+     * off-topic search results. As a backstop, prepend the topic to any query that shares
+     * nothing with it. Skipped for very short topics where substring checks are unreliable.
+     */
+    private static List<String> scopeAll(List<String> queries, String topic) {
+        Set<String> scoped = new LinkedHashSet<>();
+        for (String q : queries) {
+            scoped.add(scope(q, topic));
+        }
+        return new ArrayList<>(scoped);
+    }
+
+    static String scope(String query, String topic) {
+        String t = topic == null ? "" : topic.strip();
+        if (t.length() < 3) {
+            return query; // too short to match reliably; trust the model
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        if (q.contains(t.toLowerCase(Locale.ROOT))) {
+            return query; // already mentions the whole topic
+        }
+        for (String token : t.toLowerCase(Locale.ROOT).split("[^a-z0-9]+", -1)) {
+            if (token.length() >= 4 && q.contains(token)) {
+                return query; // shares a significant token with the topic
+            }
+        }
+        return t + " " + query;
     }
 
     private List<String> parse(String raw) {

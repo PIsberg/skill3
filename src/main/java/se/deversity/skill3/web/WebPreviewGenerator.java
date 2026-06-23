@@ -2,13 +2,30 @@ package se.deversity.skill3.web;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Renders a SKILL.md into a self-contained dark-theme {@code index.html} preview.
- * Lightweight Markdown handling (headings, fenced code, lists, paragraphs) — no
- * external dependencies.
+ * Lightweight Markdown handling (headings, fenced code, lists, paragraphs, and the
+ * inline span syntax that actually shows up in a SKILL.md: links, inline code, bold,
+ * italic) — no external dependencies.
  */
 public class WebPreviewGenerator {
+
+    // Inline span patterns, applied to already-HTML-escaped text. Order matters:
+    // inline code is handled first so link/emphasis syntax inside a code span is left alone.
+    private static final Pattern INLINE_CODE = Pattern.compile("`([^`]+)`");
+    private static final Pattern LINK = Pattern.compile("\\[([^\\]]+)]\\(([^)\\s]+)\\)");
+    private static final Pattern BOLD = Pattern.compile("\\*\\*([^*]+)\\*\\*");
+    // Only http(s)/mailto links are rendered as anchors, and the URL must contain no quote,
+    // angle bracket or whitespace — so it cannot break out of the href attribute. Anything else
+    // (javascript:, data:, attribute-breakout payloads, relative links) is left as literal text.
+    // The SKILL.md is built from untrusted web/LLM content and the preview is opened in a browser,
+    // so this is the XSS boundary for the link span.
+    private static final Pattern SAFE_URL = Pattern.compile("(?i)^(?:https?:|mailto:)[^\"'<>\\s]*$");
+    // Italic only when underscores form a clear pair on word boundaries, so technical
+    // identifiers like `_meta` (a lone leading underscore) are never mangled.
+    private static final Pattern ITALIC = Pattern.compile("(?<![\\w])_([^_\\n]+)_(?![\\w])");
 
     public String render(String skillMd) {
         String body = stripFrontmatter(skillMd);
@@ -59,29 +76,29 @@ public class WebPreviewGenerator {
                 flushPara(out, para);
                 closeList(out, inList);
                 inList = false;
-                out.add("<h3>" + escape(t.substring(4)) + "</h3>");
+                out.add("<h3>" + inline(t.substring(4)) + "</h3>");
             } else if (t.startsWith("## ")) {
                 flushPara(out, para);
                 closeList(out, inList);
                 inList = false;
-                out.add("<h2>" + escape(t.substring(3)) + "</h2>");
+                out.add("<h2>" + inline(t.substring(3)) + "</h2>");
             } else if (t.startsWith("# ")) {
                 flushPara(out, para);
                 closeList(out, inList);
                 inList = false;
-                out.add("<h1>" + escape(t.substring(2)) + "</h1>");
+                out.add("<h1>" + inline(t.substring(2)) + "</h1>");
             } else if (t.startsWith("- ")) {
                 flushPara(out, para);
                 if (!inList) {
                     out.add("<ul>");
                     inList = true;
                 }
-                out.add("<li>" + escape(t.substring(2)) + "</li>");
+                out.add("<li>" + inline(t.substring(2)) + "</li>");
             } else {
                 if (para.length() > 0) {
                     para.append(' ');
                 }
-                para.append(escape(t));
+                para.append(inline(t));
             }
         }
         flushPara(out, para);
@@ -104,6 +121,35 @@ public class WebPreviewGenerator {
 
     static String escape(String s) {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /**
+     * HTML-escapes {@code s}, then renders inline Markdown spans. Order is deliberate: code
+     * spans first (so link/emphasis syntax inside them is left alone), then bold/italic, and
+     * links LAST — the link replacement injects {@code target="_blank"}, whose underscore would
+     * otherwise interfere with italic matching (e.g. the {@code _Created with ..._} footer).
+     */
+    static String inline(String s) {
+        String h = escape(s);
+        h = INLINE_CODE.matcher(h).replaceAll("<code>$1</code>");
+        h = BOLD.matcher(h).replaceAll("<strong>$1</strong>");
+        h = ITALIC.matcher(h).replaceAll("<em>$1</em>");
+        // Per-match function: the returned string is used literally (no $-group expansion), and the
+        // URL is scheme-checked so an unsafe link degrades to literal text instead of an anchor.
+        h = LINK.matcher(h).replaceAll(m -> renderLink(m.group(1), m.group(2)));
+        return h;
+    }
+
+    /**
+     * Renders a Markdown link as an anchor only when the URL is a safe http(s)/mailto target with
+     * no attribute-breakout characters; otherwise emits the original text literally. The text and
+     * URL are already HTML-escaped by {@link #inline}, so {@code &} is already {@code &amp;} here.
+     */
+    private static String renderLink(String text, String url) {
+        if (!SAFE_URL.matcher(url).matches()) {
+            return "[" + text + "](" + url + ")"; // unsafe/unknown scheme — keep as literal text
+        }
+        return "<a href=\"" + url + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + text + "</a>";
     }
 
     private static final String TEMPLATE = """

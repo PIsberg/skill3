@@ -19,6 +19,7 @@ class VerifierTest {
         Source s = new Source("https://modelcontextprotocol.io/spec");
         s.published = LocalDate.of(2026, 5, 1);
         s.excerpts.add("MCP became stateless in the latest revision.");
+        s.codeBlocks.add("client.call(\"tools/list\");");
         return new ContextBundle("mcp", "claude-opus-4-8",
                 new Cutoff(YearMonth.of(2026, 1), "test"), List.of(s));
     }
@@ -40,5 +41,6 @@ class VerifierTest {
         assertTrue(user.contains("MCP shipped X on 2026-07-28."));               // the draft
         assertTrue(user.contains("https://modelcontextprotocol.io/spec"));        // the source
         assertTrue(user.contains("MCP became stateless in the latest revision.")); // the evidence
+        assertTrue(user.contains("client.call(\"tools/list\");"));                  // code is evidence too
     }
 }

@@ -71,6 +71,24 @@ class FreshnessFilterTest {
     }
 
     @Test
+    void postCutoffRecencyDecaysWithAgeWhenTodayIsKnown() {
+        LocalDate today = LocalDate.of(2026, 12, 31);
+        Source fresh = source("https://a", 1.0, LocalDate.of(2026, 12, 1)); // near today
+        Source older = source("https://b", 1.0, LocalDate.of(2026, 2, 1));  // just after cutoff
+
+        List<Source> out = new FreshnessFilter(cutoff, false, today).apply(List.of(older, fresh));
+
+        assertTrue(fresh.postCutoff);
+        assertTrue(older.postCutoff);
+        // Both inside the post-cutoff band, but the fresher one scores higher and ranks first.
+        assertTrue(fresh.recencyWeight > older.recencyWeight,
+                "fresher source should earn more recency: " + fresh.recencyWeight + " vs " + older.recencyWeight);
+        assertTrue(older.recencyWeight >= 0.6 && fresh.recencyWeight <= 1.0);
+        assertTrue(older.recencyWeight > 0.5); // still above the pre-cutoff weight
+        assertEquals("https://a", out.get(0).url);
+    }
+
+    @Test
     void cutoffMonthItselfCountsAsPreCutoff() {
         Source s = source("https://a", 1.0, LocalDate.of(2026, 1, 15));
         new FreshnessFilter(cutoff, false).apply(List.of(s));

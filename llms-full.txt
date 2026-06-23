@@ -77,6 +77,10 @@ These elements are security-critical. Do not weaken security properties. Every c
 - Security-critical code (aspect: external-API credential handling and the only network egress with a secret token).
 - Never weaken security properties. Every change requires explicit security review.
 
+### se.deversity.skill3.pipeline.HttpPageFetcher
+- Security-critical code (aspect: outbound page fetch egress for partly-untrusted URLs; SSRF guard must not be weakened).
+- Never weaken security properties. Every change requires explicit security review.
+
 
 ## Deterministic Pure Functions
 The following elements must remain pure functions without side effects or mutations.

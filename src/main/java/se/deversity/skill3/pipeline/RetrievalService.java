@@ -126,6 +126,12 @@ public class RetrievalService {
     }
 
     static void extractContent(Document doc, Source s) {
+        // Drop site chrome before extracting, so navigation, sidebars, cookie banners and
+        // scripts don't crowd out the real documentation (fewer tokens, less noise). `header`
+        // is intentionally NOT removed — some docs put the page's <h1> inside it.
+        doc.select("script, style, noscript, nav, aside, footer, form,"
+                + " [role=navigation], [role=banner], [role=contentinfo],"
+                + " .sidebar, .toc, .breadcrumb, .cookie-banner, .cookie-consent").remove();
         for (Element code : doc.select("pre")) {
             String text = code.text();
             if (!text.isBlank()) {

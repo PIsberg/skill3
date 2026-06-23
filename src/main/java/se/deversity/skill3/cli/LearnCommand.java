@@ -8,6 +8,7 @@ import se.deversity.skill3.llm.AnthropicChatModel;
 import se.deversity.skill3.llm.ChatModel;
 import se.deversity.skill3.llm.LocalLlmClient;
 import se.deversity.skill3.model.Cutoff;
+import se.deversity.skill3.model.Source;
 import se.deversity.skill3.pipeline.BraveSearchClient;
 import se.deversity.skill3.pipeline.CutoffResolver;
 import se.deversity.skill3.pipeline.DateExtractor;
@@ -22,6 +23,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Callable;
 
@@ -75,9 +77,16 @@ public class LearnCommand implements Callable<Integer> {
             description = "Comma-separated authoritative hosts ranked first (e.g. modelcontextprotocol.io,github.com).")
     java.util.List<String> authoritative;
 
-    @Option(names = "--verify",
-            description = "After synthesis, re-ground every claim against the sources (one extra model call).")
-    boolean verify;
+    @Option(names = "--verify", negatable = true,
+            description = "Re-ground every claim against the sources after synthesis (accuracy gate, "
+                    + "one extra model call). Defaults to ON for capable hosted providers "
+                    + "(openai/anthropic) and OFF for local; use --verify / --no-verify to force.")
+    Boolean verify;
+
+    @Option(names = "--dry-run",
+            description = "Stop after discovery + ranking: print the planned queries and the ranked "
+                    + "sources with their dates and scores, then exit without synthesis or writing files.")
+    boolean dryRun;
 
     @Option(names = "--brave-key", description = "Brave Search key (or env BRAVE_SEARCH_API_KEY).")
     String braveKey;
@@ -163,8 +172,20 @@ public class LearnCommand implements Callable<Integer> {
         java.util.Set<String> authoritativeHosts = authoritative == null
                 ? java.util.Set.of()
                 : java.util.Set.copyOf(authoritative);
+
+        // Verification is the accuracy gate. Default it ON for capable hosted providers and OFF for
+        // local (a weak local model tends to rewrite rather than ground). Either way, warn loudly
+        // when shipping unverified so "looks clean" is never mistaken for "checked against sources".
+        boolean capableProvider = provider.equals("openai") || provider.equals("anthropic");
+        boolean effectiveVerify = verify != null ? verify : capableProvider;
+        if (!effectiveVerify) {
+            System.out.println("WARNING: shipping UNVERIFIED synthesis — claims are NOT re-grounded "
+                    + "against the sources. Add --verify to enable the accuracy gate"
+                    + (capableProvider ? "." : " (recommended once you use a capable model)."));
+        }
+
         LearnPipeline.Options options =
-                new LearnPipeline.Options(5, 2, 3, richContext, authoritativeHosts, verify);
+                new LearnPipeline.Options(5, 2, 3, richContext, authoritativeHosts, effectiveVerify);
 
         LearnPipeline pipeline = new LearnPipeline(
                 search,
@@ -174,11 +195,35 @@ public class LearnCommand implements Callable<Integer> {
                 new SkillSpectorRunner(Venv.bin("skillspector").toString()),
                 options);
 
+        LearnPipeline.Request request =
+                new LearnPipeline.Request(skillName, targetModel, cutoff, strictCutoff, outDir);
+
+        if (dryRun) {
+            try {
+                List<Source> ranked = pipeline.discover(request);
+                System.out.println("Dry run — " + ranked.size() + " ranked source(s), best first:");
+                for (Source s : ranked) {
+                    System.out.printf(Locale.ROOT,
+                            "  [score %.2f] %s%n"
+                                    + "    published=%s postCutoff=%s authority=%.2f recency=%.2f consensus=%d%n",
+                            s.combinedScore, s.url, s.published, s.postCutoff,
+                            s.authority, s.recencyWeight, s.consensusCount);
+                }
+                System.out.println("Dry run complete — no synthesis, no files written.");
+                return 0;
+            } catch (IllegalStateException e) {
+                System.err.println(e.getMessage());
+                return 1;
+            } catch (IOException e) {
+                System.err.println("discovery failed: " + e.getMessage());
+                return 1;
+            }
+        }
+
         try {
             System.out.println("Discovering and synthesizing '" + skillName + "' with "
                     + provider + ":" + llmModel + "...");
-            LearnPipeline.Result res = pipeline.run(
-                    new LearnPipeline.Request(skillName, targetModel, cutoff, strictCutoff, outDir));
+            LearnPipeline.Result res = pipeline.run(request);
 
             reportVetting(res);
             System.out.println("Done. Wrote:");

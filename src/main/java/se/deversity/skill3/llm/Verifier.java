@@ -22,8 +22,11 @@ import java.util.List;
                 + "about supported-claims-only and announced-vs-shipped.")
 public class Verifier {
 
+    // Match (and slightly exceed) the synthesizer's richest evidence budget so the fact-checker
+    // never sees LESS than what produced the draft — otherwise it strips claims it can't see.
     private static final int MAX_SOURCES = 20;
-    private static final int MAX_EXCERPTS = 10;
+    private static final int MAX_EXCERPTS = 20;
+    private static final int MAX_CODE = 8;
 
     private static final String SYSTEM = """
             You are a fact-checker for an Agent Skills SKILL.md. You are given a DRAFT
@@ -31,6 +34,9 @@ public class Verifier {
             so every factual claim is supported by the SOURCES:
             - Remove or soften any claim, number, date, version, or identifier not
               supported by the SOURCES. Do NOT add new facts or new source URLs.
+            - The code blocks listed under each source are admissible evidence too: keep
+              an example only if a source's excerpts or code support it; otherwise drop it.
+              Never invent or "fix up" code that no source shows.
             - Anything dated AFTER today is at most ANNOUNCED or PLANNED — never present a
               future-dated release or event as already shipped; rephrase as
               "planned/expected for <date>" or drop it.
@@ -62,6 +68,9 @@ public class Verifier {
             sb.append("\n[").append(s.url).append("] published=").append(s.published).append('\n');
             for (int j = 0; j < Math.min(MAX_EXCERPTS, s.excerpts.size()); j++) {
                 sb.append("- ").append(s.excerpts.get(j)).append('\n');
+            }
+            for (int j = 0; j < Math.min(MAX_CODE, s.codeBlocks.size()); j++) {
+                sb.append("- code: ").append(s.codeBlocks.get(j)).append('\n');
             }
         }
         return sb.toString();

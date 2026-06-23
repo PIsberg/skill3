@@ -1,5 +1,8 @@
 package se.deversity.skill3.skillspector;
 
+import com.fasterxml.jackson.core.JacksonException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +17,10 @@ import java.util.List;
  * and can be overridden.
  */
 public class SkillSpectorRunner {
+
+    /** Cap on captured stderr echoed into an exception, so a runaway log stays readable. */
+    private static final int MAX_STDERR_CHARS = 2000;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final String executable;
     private final List<String> scanArgs;
@@ -45,9 +52,12 @@ public class SkillSpectorRunner {
             throw new SkillSpectorUnavailableException(
                     "Could not run '" + executable + "'. Run `setup` first.", e);
         }
+        // Keep the drained stderr instead of discarding it: when the scan fails (e.g. a broken
+        // venv, a Python traceback, an architecture mismatch) it is the only useful diagnostic.
+        byte[][] errHolder = {new byte[0]};
         Thread drain = new Thread(() -> {
             try (InputStream err = process.getErrorStream()) {
-                err.readAllBytes();
+                errHolder[0] = err.readAllBytes();
             } catch (IOException ignored) {
                 // best-effort drain
             }
@@ -56,9 +66,10 @@ public class SkillSpectorRunner {
         drain.start();
         try (InputStream out = process.getInputStream()) {
             String output = new String(out.readAllBytes(), StandardCharsets.UTF_8);
-            process.waitFor();
+            int exit = process.waitFor();
             drain.join(1000);
-            return SkillSpectorReport.parse(output);
+            String stderr = new String(errHolder[0], StandardCharsets.UTF_8);
+            return interpret(output, exit, stderr);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("SkillSpector scan interrupted", e);
@@ -71,5 +82,33 @@ public class SkillSpectorRunner {
                 process.destroy();
             }
         }
+    }
+
+    /**
+     * Turns a raw scan invocation into a report, or throws with diagnostics when the scan
+     * clearly failed: blank stdout, or a non-zero exit whose stdout isn't even parseable JSON
+     * (a non-zero exit <em>with</em> valid JSON is normal — that's how a scanner reports findings).
+     * The captured stderr is the actionable part, so it rides along in the message.
+     */
+    static SkillSpectorReport interpret(String stdout, int exitCode, String stderr) throws IOException {
+        if (stdout.isBlank() || (exitCode != 0 && !isParseableJson(stdout))) {
+            String tail = stderr == null ? "" : stderr.strip();
+            throw new IOException("SkillSpector scan failed (exit code " + exitCode + "). "
+                    + (tail.isEmpty() ? "No stderr output." : "stderr: " + truncate(tail)));
+        }
+        return SkillSpectorReport.parse(stdout);
+    }
+
+    private static boolean isParseableJson(String s) {
+        try {
+            MAPPER.readTree(s);
+            return true;
+        } catch (JacksonException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    private static String truncate(String s) {
+        return s.length() <= MAX_STDERR_CHARS ? s : s.substring(0, MAX_STDERR_CHARS) + "… (truncated)";
     }
 }

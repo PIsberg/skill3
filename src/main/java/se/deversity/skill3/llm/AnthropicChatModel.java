@@ -25,7 +25,8 @@ public class AnthropicChatModel implements ChatModel {
     private final long maxTokens;
 
     public AnthropicChatModel(String apiKey, String model, int maxTokens) {
-        this(AnthropicOkHttpClient.builder().apiKey(apiKey).build(), model, maxTokens);
+        // The SDK retries transient failures (429/5xx) with backoff and honors Retry-After.
+        this(AnthropicOkHttpClient.builder().apiKey(apiKey).maxRetries(3).build(), model, maxTokens);
     }
 
     public AnthropicChatModel(AnthropicClient client, String model, int maxTokens) {

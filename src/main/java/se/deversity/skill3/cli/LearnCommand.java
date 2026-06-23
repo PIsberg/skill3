@@ -10,8 +10,11 @@ import se.deversity.skill3.llm.LocalLlmClient;
 import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.model.Source;
 import se.deversity.skill3.pipeline.BraveSearchClient;
+import se.deversity.skill3.pipeline.CachingPageFetcher;
+import se.deversity.skill3.pipeline.CachingSearchClient;
 import se.deversity.skill3.pipeline.CutoffResolver;
 import se.deversity.skill3.pipeline.DateExtractor;
+import se.deversity.skill3.pipeline.DiskCache;
 import se.deversity.skill3.pipeline.FileCorpus;
 import se.deversity.skill3.pipeline.HttpPageFetcher;
 import se.deversity.skill3.pipeline.PageFetcher;
@@ -21,6 +24,7 @@ import se.deversity.skill3.skillspector.SkillSpectorRunner;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -32,6 +36,9 @@ import java.util.concurrent.Callable;
         mixinStandardHelpOptions = true,
         description = "Discover, evaluate, synthesize and vet a SKILL.md for a topic.")
 public class LearnCommand implements Callable<Integer> {
+
+    /** Days a cached search result or fetched page stays valid before it's re-fetched. */
+    private static final int CACHE_TTL_DAYS = 7;
 
     @Parameters(index = "0", description = "Skill/topic to learn (e.g. mcp, jdk26).")
     String skillName;
@@ -96,6 +103,11 @@ public class LearnCommand implements Callable<Integer> {
                     + "Brave. When set, no Brave key or network is needed for discovery.")
     String inputFile;
 
+    @Option(names = "--no-cache",
+            description = "Bypass the on-disk cache of search results and fetched pages "
+                    + "(default cache: ~/.skill3/cache, " + CACHE_TTL_DAYS + "-day TTL).")
+    boolean noCache;
+
     @Option(names = "--output-dir", description = "Output dir. Default: ./skills/<skill-name>")
     String outputDir;
 
@@ -139,8 +151,18 @@ public class LearnCommand implements Callable<Integer> {
         } else {
             String freshness = cutoff.freshnessRange(LocalDate.now(ZoneId.systemDefault()));
             System.out.println("Search window: " + freshness);
-            search = new BraveSearchClient(key, freshness);
-            fetcher = new HttpPageFetcher();
+            SearchClient liveSearch = new BraveSearchClient(key, freshness);
+            PageFetcher livePages = new HttpPageFetcher();
+            if (noCache) {
+                search = liveSearch;
+                fetcher = livePages;
+            } else {
+                Path cacheDir = Path.of(System.getProperty("user.home"), ".skill3", "cache");
+                DiskCache cache = new DiskCache(cacheDir, Duration.ofDays(CACHE_TTL_DAYS));
+                search = new CachingSearchClient(liveSearch, cache);
+                fetcher = new CachingPageFetcher(livePages, cache);
+                System.out.println("Cache: " + cacheDir + " (--no-cache to bypass)");
+            }
         }
 
         final ChatModel chat;

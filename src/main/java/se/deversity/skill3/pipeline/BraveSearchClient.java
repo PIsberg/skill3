@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+import se.deversity.skill3.net.HttpRetry;
 import se.deversity.vibetags.annotations.AIPrivacy;
 import se.deversity.vibetags.annotations.AISecure;
 
@@ -22,6 +23,7 @@ import se.deversity.vibetags.annotations.AISecure;
 public class BraveSearchClient implements SearchClient {
 
     private static final String ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
+    private static final HttpRetry RETRY = new HttpRetry();
 
     @AIPrivacy(reason = "Brave Search subscription token — never log, echo, or include in errors/fixtures")
     private final String apiKey;
@@ -66,7 +68,8 @@ public class BraveSearchClient implements SearchClient {
                 .GET()
                 .build();
         try {
-            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> resp = RETRY.execute(
+                    () -> http.send(req, HttpResponse.BodyHandlers.ofString()));
             if (resp.statusCode() / 100 != 2) {
                 throw new IOException("Brave Search returned HTTP " + resp.statusCode());
             }

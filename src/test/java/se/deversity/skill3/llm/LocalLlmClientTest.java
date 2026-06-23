@@ -72,7 +72,8 @@ class LocalLlmClientTest {
     @Test
     void throwsOnNonSuccess() throws Exception {
         HttpClient http = mock(HttpClient.class);
-        doReturn(response(500, "boom")).when(http).send(any(), any());
+        // 400 is non-transient, so it surfaces immediately (transient 5xx/429 retry is in HttpRetryTest).
+        doReturn(response(400, "bad request")).when(http).send(any(), any());
 
         LocalLlmClient client = new LocalLlmClient("http://localhost:11434", "m", http);
         assertThrows(IOException.class, () -> client.complete("s", "u"));

@@ -15,4 +15,15 @@
     <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
   </Match>
 
+  <!-- EI_EXPOSE_REP2: the caching decorators intentionally hold their injected collaborators
+       (a stateless delegate plus an effectively-immutable DiskCache of Path+Duration) by
+       reference. This is dependency injection, not exposure of internal representation. -->
+  <Match>
+    <Or>
+      <Class name="se.deversity.skill3.pipeline.CachingSearchClient"/>
+      <Class name="se.deversity.skill3.pipeline.CachingPageFetcher"/>
+    </Or>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+
 </FindBugsFilter>

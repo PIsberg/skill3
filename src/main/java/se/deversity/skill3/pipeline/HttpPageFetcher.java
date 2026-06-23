@@ -1,5 +1,6 @@
 package se.deversity.skill3.pipeline;
 
+import se.deversity.skill3.net.HttpRetry;
 import se.deversity.vibetags.annotations.AISecure;
 
 import java.io.IOException;
@@ -31,6 +32,7 @@ public class HttpPageFetcher implements PageFetcher {
     private static final int MAX_REDIRECTS = 5;
     /** Cap on the returned body; documentation pages well under this, runaway responses bounded. */
     private static final int MAX_CHARS = 8 * 1024 * 1024;
+    private static final HttpRetry RETRY = new HttpRetry();
 
     private final HttpClient http;
 
@@ -75,7 +77,7 @@ public class HttpPageFetcher implements PageFetcher {
                 .GET()
                 .build();
         try {
-            return http.send(req, HttpResponse.BodyHandlers.ofString());
+            return RETRY.execute(() -> http.send(req, HttpResponse.BodyHandlers.ofString()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Fetch interrupted: " + uri, e);

@@ -68,6 +68,9 @@
     <element path="se.deversity.skill3.pipeline.BraveSearchClient">
       <aspect>external-API credential handling and the only network egress with a secret token</aspect>
     </element>
+    <element path="se.deversity.skill3.pipeline.DiscoveryProvider">
+      <aspect>forwards the Brave subscription token to the search client; must not log it</aspect>
+    </element>
     <element path="se.deversity.skill3.pipeline.HttpPageFetcher">
       <aspect>outbound page fetch egress for partly-untrusted URLs; SSRF guard must not be weakened</aspect>
     </element>

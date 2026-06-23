@@ -8,14 +8,10 @@ import se.deversity.skill3.llm.ChatModel;
 import se.deversity.skill3.llm.LlmProviderFactory;
 import se.deversity.skill3.model.Cutoff;
 import se.deversity.skill3.model.Source;
-import se.deversity.skill3.pipeline.BraveSearchClient;
-import se.deversity.skill3.pipeline.CachingPageFetcher;
-import se.deversity.skill3.pipeline.CachingSearchClient;
 import se.deversity.skill3.pipeline.CutoffResolver;
 import se.deversity.skill3.pipeline.DateExtractor;
+import se.deversity.skill3.pipeline.DiscoveryProvider;
 import se.deversity.skill3.pipeline.DiskCache;
-import se.deversity.skill3.pipeline.FileCorpus;
-import se.deversity.skill3.pipeline.HttpPageFetcher;
 import se.deversity.skill3.pipeline.PageFetcher;
 import se.deversity.skill3.pipeline.SearchClient;
 import se.deversity.skill3.skillspector.Finding;
@@ -135,13 +131,10 @@ public class LearnCommand implements Callable<Integer> {
 
         Path outDir = outputDir != null ? Path.of(outputDir) : Path.of("skills", skillName);
 
-        final SearchClient search;
-        final PageFetcher fetcher;
+        final DiscoveryProvider.Sources sources;
         if (fileMode) {
             try {
-                FileCorpus corpus = FileCorpus.load(Path.of(inputFile));
-                search = corpus;
-                fetcher = corpus;
+                sources = DiscoveryProvider.fromInputFile(Path.of(inputFile));
             } catch (IOException e) {
                 System.err.println("Cannot read --input-file '" + inputFile + "': " + e.getMessage());
                 return 2;
@@ -150,19 +143,16 @@ public class LearnCommand implements Callable<Integer> {
         } else {
             String freshness = cutoff.freshnessRange(LocalDate.now(ZoneId.systemDefault()));
             System.out.println("Search window: " + freshness);
-            SearchClient liveSearch = new BraveSearchClient(key, freshness);
-            PageFetcher livePages = new HttpPageFetcher();
-            if (noCache) {
-                search = liveSearch;
-                fetcher = livePages;
-            } else {
+            DiskCache cache = null;
+            if (!noCache) {
                 Path cacheDir = Path.of(System.getProperty("user.home"), ".skill3", "cache");
-                DiskCache cache = new DiskCache(cacheDir, Duration.ofDays(CACHE_TTL_DAYS));
-                search = new CachingSearchClient(liveSearch, cache);
-                fetcher = new CachingPageFetcher(livePages, cache);
+                cache = new DiskCache(cacheDir, Duration.ofDays(CACHE_TTL_DAYS));
                 System.out.println("Cache: " + cacheDir + " (--no-cache to bypass)");
             }
+            sources = DiscoveryProvider.brave(key, freshness, cache);
         }
+        SearchClient search = sources.search();
+        PageFetcher fetcher = sources.fetcher();
 
         String provider = llmProvider == null ? "local" : llmProvider.toLowerCase(Locale.ROOT);
         final ChatModel chat;

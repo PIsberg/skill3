@@ -114,7 +114,9 @@ public class Synthesizer {
                     .append(" postCutoff=").append(s.postCutoff)
                     .append(" published=").append(s.published)
                     .append(" consensus=").append(s.consensusCount).append('\n');
-            appendList(sb, "excerpt", s.excerpts, maxExcerpts);
+            // Keep the most topic-relevant excerpts, not just the first ones in page order.
+            appendList(sb, "excerpt",
+                    EvidenceSelector.topByRelevance(s.excerpts, bundle.skillName(), maxExcerpts), maxExcerpts);
             appendList(sb, "code", s.codeBlocks, maxCode);
         }
         sb.append("\n=== END SOURCES ===\n\n");

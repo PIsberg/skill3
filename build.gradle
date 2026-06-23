@@ -104,6 +104,27 @@ jacocoTestReport {
     }
 }
 
+// Coverage gate, set below current (~81% instruction / ~72% branch) to catch regressions
+// without being brittle. Wired into `check`, so CI fails if coverage drops materially.
+jacocoTestCoverageVerification {
+    dependsOn test
+    violationRules {
+        rule {
+            limit {
+                counter = 'INSTRUCTION'
+                minimum = 0.75
+            }
+            limit {
+                counter = 'BRANCH'
+                minimum = 0.65
+            }
+        }
+    }
+}
+tasks.named('check') {
+    dependsOn jacocoTestCoverageVerification
+}
+
 pmd {
     consoleOutput = true
     toolVersion = '7.25.0'

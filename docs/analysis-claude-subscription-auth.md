@@ -168,6 +168,29 @@ the JRebel "What's New in Java" article and the OpenJDK 26 JEP deep-dive. Input
 vetting (prompt-injection / secret-leakage scan) passes clean on it. This is the
 `--input-file` used by the commands above.
 
+## 7b. Verification is now opt-out (`--no-verify`)
+
+The accuracy gate (`Verifier`) used to default ON only for capable hosted
+providers and OFF for local. It now defaults **ON for every provider** — accuracy
+is the safer default — and is disabled with `--no-verify`. When verification runs
+against a non-capable provider, the CLI prints an advisory (a weak model may
+rewrite rather than re-ground) instead of silently skipping it.
+
+Re-running the JDK 26 skill through the gate with the local model
+(`qwen2.5:14b`) demonstrated the tradeoff the advisory warns about:
+
+- **Fixed** — the fabricated `LazyConstant` constructor from the unverified run
+  was corrected to `LazyConstant.of()` (grounded to the source), and JEP coverage
+  went from ~6 to all 10.
+- **Regressed** — the local verifier rewrote rather than surgically grounding, so
+  it dropped the code examples and the `## Sources` list. The published
+  `examples/SKILL-JDK26.md` is the verified output with the Sources section
+  restored by hand (the one unambiguous, grounded loss).
+
+Takeaway: opt-out verification is the right default, and a *capable* model
+(Opus + `--verify`) is still the gold path — it grounds claims without discarding
+structure. Local verification trades structure for accuracy.
+
 ## 8. Recommendation
 
 Keep both modes (done). Use the **API key** for CI and any unattended pipeline —

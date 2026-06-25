@@ -20,7 +20,7 @@ AI tools reading this file should respect the guardrails defined below. These ru
 - [Verifier](se.deversity.skill3.llm.Verifier): Sensitivity: High. Note: Accuracy gate that re-grounds claims against the sources. Only worthwhile with a capable model — a weak model rewrites rather than grounds. Keep the prompt strict about supported-claims-only and announced-vs-shipped.
 
 ## 🧵 Thread-Safe by Design
-- [RetrievalService](se.deversity.skill3.pipeline.RetrievalService): Strategy: IMMUTABLE. Note: Collaborators (PageFetcher/HttpClient, DateExtractor, AuthorityScorer) are stateless/immutable; each fetch task builds its own Source and results are merged on the caller thread. Keep it that way — do not share mutable state between fetch tasks.
+- [RetrievalService](se.deversity.skill3.pipeline.RetrievalService): Strategy: IMMUTABLE. Note: Collaborators (PageFetcher/HttpClient, DateExtractor, AuthorityScorer) are stateless/immutable; each fetch task builds its own Source and results are merged on the caller thread. Keep it that way — do not share mutable state between fetch tasks. The opt-in `sequential` mode only removes concurrency (fetches run on the caller thread); it cannot weaken the invariant — serial execution is strictly safer than the parallel default it replaces.
 
 ## ❄️ Immutable Types
 - [ContextBundle](se.deversity.skill3.model.ContextBundle): immutable type — Immutable record; the sources list is defensively copied in the compact constructor.

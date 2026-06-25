@@ -22,9 +22,12 @@ import java.util.concurrent.Future;
  * page, and extracts text excerpts, code blocks, a publication date, and an
  * authority score into {@link Source} objects.
  *
- * <p>The per-URL fetches run concurrently on virtual threads — they are blocking
- * I/O and independent — while result aggregation happens on the calling thread, so
- * no {@link Source} is ever shared between workers. Input order is preserved.
+ * <p>The per-URL fetches run concurrently on virtual threads by default — they are
+ * blocking I/O and independent — while result aggregation happens on the calling
+ * thread, so no {@link Source} is ever shared between workers. Input order is
+ * preserved. When {@code sequential} is set the same fetches run one at a time on
+ * the calling thread (no executor); this is an opt-in mode for callers that want to
+ * be gentle on a rate-limited backend or need fully deterministic timing.
  *
  * <p>The scraper "fallback" is realised by simply proceeding with whatever pages
  * were fetched; when too few usable sources are found the caller is warned.
@@ -33,7 +36,9 @@ import java.util.concurrent.Future;
         note = "Collaborators (PageFetcher/HttpClient, DateExtractor, AuthorityScorer) are "
                 + "stateless/immutable; each fetch task builds its own Source and results are "
                 + "merged on the caller thread. Keep it that way — do not share mutable state "
-                + "between fetch tasks.")
+                + "between fetch tasks. The opt-in `sequential` mode only removes concurrency "
+                + "(fetches run on the caller thread); it cannot weaken the invariant — serial "
+                + "execution is strictly safer than the parallel default it replaces.")
 public class RetrievalService {
 
     private static final int MAX_EXCERPTS = 40;
@@ -42,13 +47,22 @@ public class RetrievalService {
     private final PageFetcher fetcher;
     private final DateExtractor dates;
     private final AuthorityScorer authority;
+    /** When true, fetch pages one at a time on the caller thread instead of fanning out. */
+    private final boolean sequential;
 
+    /** Builds a service that fetches pages concurrently (the default). */
     public RetrievalService(SearchClient search, PageFetcher fetcher,
                             DateExtractor dates, AuthorityScorer authority) {
+        this(search, fetcher, dates, authority, false);
+    }
+
+    public RetrievalService(SearchClient search, PageFetcher fetcher,
+                            DateExtractor dates, AuthorityScorer authority, boolean sequential) {
         this.search = search;
         this.fetcher = fetcher;
         this.dates = dates;
         this.authority = authority;
+        this.sequential = sequential;
     }
 
     /** {@return retrieved sources for the single default query {@code skillName documentation}} */
@@ -71,28 +85,12 @@ public class RetrievalService {
     }
 
     private List<Source> fetchAll(List<String> urls) throws IOException {
-        // Fan out the blocking fetches over virtual threads; close() joins them all.
-        List<Future<FetchResult>> futures = new ArrayList<>(urls.size());
-        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (String url : urls) {
-                futures.add(pool.submit(() -> fetchOne(url)));
-            }
-        }
+        List<FetchResult> results = sequential ? fetchSerially(urls) : fetchConcurrently(urls);
 
-        // Aggregate on this thread only — workers never touch shared state. Iterating the
-        // futures in submission order keeps the output deterministic (URL order in, order out).
+        // Aggregate on this thread only — workers never touch shared state. Iterating in
+        // submission order keeps the output deterministic (URL order in, order out).
         List<Source> sources = new ArrayList<>();
-        for (Future<FetchResult> future : futures) {
-            FetchResult result;
-            try {
-                result = future.get();
-            } catch (ExecutionException e) {
-                System.err.println("  ! fetch task failed: " + e.getCause());
-                continue;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IOException("Retrieval interrupted", e);
-            }
+        for (FetchResult result : results) {
             if (result.source() != null) {
                 sources.add(result.source());
             } else if (result.skipMessage() != null) {
@@ -100,6 +98,37 @@ public class RetrievalService {
             }
         }
         return sources;
+    }
+
+    /** Default path: fan out the blocking fetches over virtual threads; close() joins them all. */
+    private List<FetchResult> fetchConcurrently(List<String> urls) throws IOException {
+        List<Future<FetchResult>> futures = new ArrayList<>(urls.size());
+        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (String url : urls) {
+                futures.add(pool.submit(() -> fetchOne(url)));
+            }
+        }
+        List<FetchResult> results = new ArrayList<>(futures.size());
+        for (Future<FetchResult> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException e) {
+                System.err.println("  ! fetch task failed: " + e.getCause());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Retrieval interrupted", e);
+            }
+        }
+        return results;
+    }
+
+    /** Opt-in path: fetch one URL at a time on the caller thread — no concurrency at all. */
+    private List<FetchResult> fetchSerially(List<String> urls) {
+        List<FetchResult> results = new ArrayList<>(urls.size());
+        for (String url : urls) {
+            results.add(fetchOne(url));
+        }
+        return results;
     }
 
     /** Outcome of one page fetch: a populated source, or a skip message — never both. */

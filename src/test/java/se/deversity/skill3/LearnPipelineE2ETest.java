@@ -227,7 +227,7 @@ class LearnPipelineE2ETest {
         // verify=true triggers the accuracy gate (a second model call); the fake handles both.
         LearnPipeline pipeline = new LearnPipeline(
                 search("https://a.com/doc"), fetcher(pages), new DateExtractor(), model(), null,
-                new LearnPipeline.Options(5, 2, 3, false, java.util.Set.of(), true));
+                new LearnPipeline.Options(5, 2, 3, false, java.util.Set.of(), true, false));
 
         LearnPipeline.Result res = pipeline.run(request(dir, false));
 

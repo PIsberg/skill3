@@ -95,13 +95,14 @@ public class LearnPipeline {
 
     /** Tunable run settings; defaults preserve the original local-first behaviour. */
     public record Options(int maxResults, int minAgreement, int maxIterations,
-                          boolean richContext, Set<String> authoritativeHosts, boolean verify) {
+                          boolean richContext, Set<String> authoritativeHosts, boolean verify,
+                          boolean sequential) {
         public Options {
             authoritativeHosts = Set.copyOf(authoritativeHosts);
         }
 
         public static Options defaults() {
-            return new Options(5, 2, 3, false, Set.of(), false);
+            return new Options(5, 2, 3, false, Set.of(), false, false);
         }
     }
 
@@ -119,6 +120,8 @@ public class LearnPipeline {
     private final Set<String> authoritativeHosts;
     /** Run the accuracy gate (re-ground claims against the sources) after synthesis. */
     private final boolean verify;
+    /** Fetch pages one at a time instead of concurrently (gentler on rate-limited backends). */
+    private final boolean sequential;
 
     /** Convenience for the common case: default {@link Options}. */
     public LearnPipeline(SearchClient search, PageFetcher fetcher, DateExtractor dates,
@@ -139,6 +142,7 @@ public class LearnPipeline {
         this.richContext = options.richContext();
         this.authoritativeHosts = options.authoritativeHosts();
         this.verify = options.verify();
+        this.sequential = options.sequential();
     }
 
     /**
@@ -152,7 +156,7 @@ public class LearnPipeline {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
 
         RetrievalService retrieval = new RetrievalService(
-                search, fetcher, dates, new AuthorityScorer(authoritativeHosts));
+                search, fetcher, dates, new AuthorityScorer(authoritativeHosts), sequential);
 
         final List<String> queries;
         if (search.isCuratedCorpus()) {

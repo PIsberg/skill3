@@ -16,9 +16,14 @@ public final class LlmProviderFactory {
     private LlmProviderFactory() {
     }
 
-    /** Inputs for {@link #create}; {@code key} and {@code temperature} are optional. */
+    /**
+     * Inputs for {@link #create}; {@code key}, {@code temperature}, and {@code authToken} are
+     * optional. {@code authToken} is a Claude subscription (Pro/Max) OAuth access token; when set
+     * for the {@code anthropic} provider it is used in preference to {@code key}.
+     */
     public record Config(String provider, String endpoint, String model, int maxTokens,
-                         @Nullable String key, @Nullable Double temperature) {
+                         @Nullable String key, @Nullable Double temperature,
+                         @Nullable String authToken) {
     }
 
     /** {@return whether {@code provider} is a capable hosted provider} Used to default verification on. */
@@ -34,12 +39,21 @@ public final class LlmProviderFactory {
     public static ChatModel create(Config cfg) {
         return switch (cfg.provider().toLowerCase(Locale.ROOT)) {
             case "anthropic" -> {
+                // Prefer a Claude subscription token (Authorization: Bearer + oauth beta header)
+                // when supplied; otherwise fall back to a standard API key (x-api-key). Both remain
+                // valid ways to authenticate the anthropic provider.
+                String token = resolveKey(cfg.authToken(), "ANTHROPIC_AUTH_TOKEN");
+                if (token != null) {
+                    yield AnthropicChatModel.withSubscription(token, cfg.model(), cfg.maxTokens());
+                }
                 String key = resolveKey(cfg.key(), "ANTHROPIC_API_KEY");
                 if (key == null) {
                     throw new IllegalArgumentException(
-                            "anthropic provider needs a key: pass --llm-key or set ANTHROPIC_API_KEY.");
+                            "anthropic provider needs credentials: pass --llm-auth-token or set "
+                                    + "ANTHROPIC_AUTH_TOKEN (Claude subscription), or pass --llm-key "
+                                    + "or set ANTHROPIC_API_KEY.");
                 }
-                yield new AnthropicChatModel(key, cfg.model(), cfg.maxTokens());
+                yield AnthropicChatModel.withApiKey(key, cfg.model(), cfg.maxTokens());
             }
             case "openai" -> {
                 String key = resolveKey(cfg.key(), "LLM_API_KEY");

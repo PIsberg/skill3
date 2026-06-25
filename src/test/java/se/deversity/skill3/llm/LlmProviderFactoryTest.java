@@ -10,7 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LlmProviderFactoryTest {
 
     private static LlmProviderFactory.Config config(String provider, String key) {
-        return new LlmProviderFactory.Config(provider, "http://localhost:11434", "m", 4096, key, null);
+        return new LlmProviderFactory.Config(provider, "http://localhost:11434", "m", 4096, key, null, null);
+    }
+
+    private static LlmProviderFactory.Config config(String provider, String key, String authToken) {
+        return new LlmProviderFactory.Config(provider, "http://localhost:11434", "m", 4096, key, null, authToken);
     }
 
     @Test
@@ -26,6 +30,27 @@ class LlmProviderFactoryTest {
     @Test
     void anthropicWithKeyBuildsAnthropicModel() {
         assertInstanceOf(AnthropicChatModel.class, LlmProviderFactory.create(config("anthropic", "sk-ant-test")));
+    }
+
+    @Test
+    void anthropicWithSubscriptionTokenBuildsAnthropicModel() {
+        assertInstanceOf(AnthropicChatModel.class,
+                LlmProviderFactory.create(config("anthropic", null, "oat-subscription-token")));
+    }
+
+    @Test
+    void anthropicPrefersSubscriptionTokenOverApiKey() {
+        // Both supplied: the subscription path wins; either way an AnthropicChatModel is built.
+        assertInstanceOf(AnthropicChatModel.class,
+                LlmProviderFactory.create(config("anthropic", "sk-ant-test", "oat-subscription-token")));
+    }
+
+    @Test
+    void anthropicWithNoCredentialsThrows() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> LlmProviderFactory.create(config("anthropic", null, null)));
+        assertTrue(e.getMessage().contains("ANTHROPIC_AUTH_TOKEN"));
+        assertTrue(e.getMessage().contains("ANTHROPIC_API_KEY"));
     }
 
     @Test

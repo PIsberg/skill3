@@ -63,6 +63,12 @@ public class LearnCommand implements Callable<Integer> {
             description = "API key for hosted providers (openai: env LLM_API_KEY; anthropic: env ANTHROPIC_API_KEY).")
     String llmKey;
 
+    @Option(names = "--llm-auth-token",
+            description = "Claude subscription (Pro/Max) OAuth access token for anthropic (or env "
+                    + "ANTHROPIC_AUTH_TOKEN). Sent as a Bearer token; preferred over --llm-key when set. "
+                    + "Supply a current token (e.g. from your Claude CLI login); it is not refreshed here.")
+    String llmAuthToken;
+
     @Option(names = "--max-tokens", defaultValue = "8192",
             description = "Max output tokens for synthesis. Default: ${DEFAULT-VALUE}")
     int maxTokens;
@@ -74,6 +80,13 @@ public class LearnCommand implements Callable<Integer> {
     @Option(names = "--rich-context",
             description = "Feed more sources/excerpts to the model (suits big-context models).")
     boolean richContext;
+
+    @Option(names = {"--sequential", "--synchronous"},
+            description = "Fetch source pages one at a time instead of concurrently. Slower, but "
+                    + "gentler on rate-limited backends and fully deterministic. Note: model "
+                    + "synthesis/verification are already sequential, so this only affects page "
+                    + "retrieval.")
+    boolean sequential;
 
     @Option(names = "--authoritative", split = ",",
             description = "Comma-separated authoritative hosts ranked first (e.g. modelcontextprotocol.io,github.com).")
@@ -164,7 +177,7 @@ public class LearnCommand implements Callable<Integer> {
         final ChatModel chat;
         try {
             chat = LlmProviderFactory.create(new LlmProviderFactory.Config(
-                    provider, llmEndpoint, llmModel, maxTokens, llmKey, temperature));
+                    provider, llmEndpoint, llmModel, maxTokens, llmKey, temperature, llmAuthToken));
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
             return 2;
@@ -185,8 +198,8 @@ public class LearnCommand implements Callable<Integer> {
                     + (capableProvider ? "." : " (recommended once you use a capable model)."));
         }
 
-        LearnPipeline.Options options =
-                new LearnPipeline.Options(5, 2, 3, richContext, authoritativeHosts, effectiveVerify);
+        LearnPipeline.Options options = new LearnPipeline.Options(
+                5, 2, 3, richContext, authoritativeHosts, effectiveVerify, sequential);
 
         LearnPipeline pipeline = new LearnPipeline(
                 search,

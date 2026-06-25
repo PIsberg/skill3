@@ -15,14 +15,50 @@ import java.io.IOException;
  * default). Opus 4.8 rejects {@code temperature}/{@code top_p}/{@code budget_tokens},
  * so none are sent; quality is steered by the model itself and the synthesizer prompt.
  *
+ * <p>Two credential modes are supported, both selected by {@link se.deversity.skill3.llm.LlmProviderFactory}:
+ * an <strong>API key</strong> ({@link #withApiKey}, sent as {@code x-api-key}) and a
+ * <strong>Claude subscription</strong> OAuth bearer token ({@link #withSubscription}, sent as
+ * {@code Authorization: Bearer} with the required {@code anthropic-beta: oauth-2025-04-20}
+ * header). The two are mutually exclusive on a single client — sending both is rejected by the API.
+ *
  * <p>Non-streaming: a {@code SKILL.md} fits comfortably under the {@code maxTokens} cap.
  */
 @AISecure(aspect = "Anthropic API credential handling and hosted-provider network egress")
 public class AnthropicChatModel implements ChatModel {
 
+    /**
+     * Beta header that opts a request into Claude-subscription OAuth auth. {@code /v1/messages}
+     * rejects a subscription bearer token without it, so it is sent on every subscription client.
+     */
+    static final String OAUTH_BETA_HEADER = "oauth-2025-04-20";
+
     private final AnthropicClient client;
     private final String model;
     private final long maxTokens;
+
+    /**
+     * @return a model that authenticates with an Anthropic API key ({@code sk-ant-api...}), sent as
+     *         the {@code x-api-key} header. This is the original, fully supported path.
+     */
+    public static AnthropicChatModel withApiKey(String apiKey, String model, int maxTokens) {
+        return new AnthropicChatModel(apiKey, model, maxTokens);
+    }
+
+    /**
+     * @return a model that authenticates with a Claude subscription (Pro/Max) OAuth access token,
+     *         sent as {@code Authorization: Bearer} alongside the {@code anthropic-beta:
+     *         oauth-2025-04-20} header the Messages API requires for subscription auth. The caller
+     *         supplies a current access token; this class does not run the OAuth login or refresh.
+     */
+    public static AnthropicChatModel withSubscription(String authToken, String model, int maxTokens) {
+        // The SDK retries transient failures (429/5xx) with backoff and honors Retry-After.
+        AnthropicClient client = AnthropicOkHttpClient.builder()
+                .authToken(authToken)
+                .putHeader("anthropic-beta", OAUTH_BETA_HEADER)
+                .maxRetries(3)
+                .build();
+        return new AnthropicChatModel(client, model, maxTokens);
+    }
 
     public AnthropicChatModel(String apiKey, String model, int maxTokens) {
         // The SDK retries transient failures (429/5xx) with backoff and honors Retry-After.

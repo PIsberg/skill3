@@ -1,0 +1,179 @@
+What's New in Java (Since January 2026)
+The most significant update to the JDK since January 2026 is the release of Java 26, which reached General Availability on March 17, 2026. As a non-LTS (Long-Term Support) release following Java 25, it introduces ten key JDK Enhancement Proposals (JEPs) focused on modernizing the API, tightening language semantics, and improving garbage collection throughput. Additionally, a minor security and bug-fix update (JDK 26.0.1) was released on April 21, 2026.
+Here is a breakdown of the major changes introduced in Java 26:
+Core API & Language Modernization
+JEP 500: Prepare to Make Final Mean Final: This update closes a long-standing loophole that allowed developers to modify final fields after initialization using deep reflection. In Java 26, using reflection to mutate a final field triggers a strict runtime warning. This prepares developers for a future release where this action will throw an exception, allowing the JVM to safely optimize immutable state.
+JEP 517: HTTP/3 for the HTTP Client API: The native Java HttpClient now supports the modern HTTP/3 protocol (which relies on QUIC). This provides faster handshakes, lower latency, and better security by default. It must be explicitly configured during the client build, and requests will gracefully downgrade to HTTP/2 or HTTP/1.1 if the target server lacks support.
+JEP 504: Remove the Applet API: Concluding a deprecation process that began in Java 9, the Applet API—which originally allowed Java code to run inside web browsers—has been permanently removed from the standard library to clean up legacy code.
+Performance & Runtime Improvements
+JEP 516: Ahead-of-Time (AOT) Object Caching with Any GC: Designed to accelerate application startup and warmup times, this feature allows pre-initialized cached Java objects to be loaded sequentially from a generic, garbage-collector-agnostic format. It eliminates the previous restriction that tied AOT caching to specific GC implementations, allowing it to be used alongside low-latency collectors like ZGC.
+JEP 522: G1 GC - Improve Throughput by Reducing Synchronization: To reduce write-barrier overhead, G1 now utilizes separate tracking data structures (card tables) for application threads and background GC optimizer threads. G1 atomically swaps these tables when needed, eliminating a synchronization bottleneck and yielding a 5–15% throughput gain for applications that heavily modify object references.
+Security Enhancements
+JEP 524: PEM Encodings of Cryptographic Objects (Second Preview): Introduces a refined API (PEMEncoder and PEMDecoder) for encoding and decoding cryptographic objects like public/private keys and certificates to and from the widely used Privacy-Enhanced Mail (PEM) format. This preview expands support to encrypt and decrypt KeyPair and PKCS8EncodedKeySpec objects.
+Continued Previews and Incubators
+JEP 525: Structured Concurrency (Sixth Preview): Continues to refine the StructuredTaskScope API, which treats groups of related concurrent tasks as a single unit of work to prevent orphaned threads. The sixth preview adds a new onTimeout() callback for custom joiners and streamlines several method names for brevity.
+JEP 526: Lazy Constants (Second Preview): Aims to improve startup times by introducing a LazyConstant interface. This allows developers to define constants that are only computed upon first access, rather than upfront during class loading, while still being treated by the JVM as true constants.
+JEP 530: Primitive Types in Patterns, instanceof, and switch (Fourth Preview): Further enhances pattern matching by tightening dominance checks in switch constructs and redefining unconditional exactness, allowing for safer type conversions without data loss.
+JEP 529: Vector API (Eleventh Incubator): Continues to iterate on the API that maps vector computations to optimal CPU vector instructions at runtime for data-intensive workloads.
+https://www.jrebel.com/blog/java-26
+
+Java 26, released on March 17, 2026, is the latest short-term release of the Java SE platform. It ships with exactly ten JDK Enhancement Proposals (JEPs). While it doesn't introduce sweeping new finalized language syntax, it is a massive release for performance, JVM internals, and modernizing core libraries.
+Here is a deep dive into everything you need to know about the new features, optimizations, and cleanups in JDK 26.
+1. Core API & Language Modernization
+These updates directly impact how developers write and structure their code, closing old loopholes and updating network protocols.
+JEP 500: Prepare to Make Final Mean Final
+For decades, Java developers could use "deep reflection" to change the value of a final field after an object was initialized. Java 26 closes this loophole.
+What changed: If you use java.lang.reflect.Field.setAccessible(true) to mutate a final field, the JVM will now emit a strict runtime warning.
+Why it matters: The JVM relies heavily on final fields being truly immutable to perform aggressive performance optimizations. By stopping developers from breaking this rule, the JVM can run code faster and safer.
+The future: In a future release, mutating a final field will throw an exception by default. You can test this future behavior now using the VM flag --illegal-final-field-mutation.
+JEP 517: HTTP/3 for the HTTP Client API
+The native java.net.http.HttpClient now natively supports HTTP/3, the modern internet protocol built on QUIC.
+What changed: Developers can specify HTTP/3 at the client or request level using .version(HttpClient.Version.HTTP_3).
+Why it matters: HTTP/3 significantly reduces connection latency, speeds up handshakes, and mandates encrypted connections by default. If the destination server does not support HTTP/3, the client will gracefully downgrade to HTTP/2.
+JEP 504: Remove the Applet API
+The Applet API, which once allowed Java code to run inside web browsers, is officially gone.
+What changed: Legacy classes like java.applet.Applet, java.applet.AppletContext, and javax.swing.JApplet have been permanently deleted from the JDK.
+Why it matters: No modern browser has supported Applets for years. This removal cleans up technical debt that has been deprecated since Java 9.
+2. JVM Performance & Garbage Collection
+Java 26 brings massive improvements to how the Java Virtual Machine handles memory, drastically improving startup times and throughput.
+JEP 516: Ahead-of-Time (AOT) Object Caching with Any GC
+This is a game-changer for applications that need to start up quickly, like microservices and serverless functions.
+What changed: Previously, cached Java objects were stored using direct memory addresses, tying them to specific Garbage Collectors. Now, they are stored in a generic, GC-agnostic format using logical indexes.
+Why it matters: This decouples AOT caching from the GC. You can now use AOT caching to drastically reduce application startup and warmup times while simultaneously using low-latency garbage collectors like ZGC.
+JEP 522: G1 GC: Improve Throughput by Reducing Synchronization
+The default Garbage-First (G1) collector gets a major throughput boost.
+What changed: The JVM reduced the synchronization bottleneck between your application threads and the background GC optimizer threads. It does this by simplifying write operations in the "Card Table" (the data structure G1 uses to track object references).
+Why it matters: Applications that modify object references heavily will see higher throughput and lower latency, allowing the same hardware to process more work.
+3. Previews & Incubators
+Java 26 continues to iterate on several long-term projects (like Project Amber and Project Loom), gathering feedback before finalizing these features in future releases.
+JEP
+Feature
+What's New in this Iteration
+530
+Primitive Types in Patterns, instanceof, and switch (4th Preview)
+Enhances pattern matching to allow primitive types in all pattern contexts. It adds tighter dominance checks to the compiler, catching more coding errors when writing complex switch statements.
+526
+Lazy Constants (2nd Preview)
+Introduces the LazyConstant API. It allows you to declare constants that are only computed the first time they are accessed, reducing startup overhead while retaining the performance benefits of a final field.
+525
+Structured Concurrency (6th Preview)
+Treats related concurrent threads as a single unit of work to prevent memory leaks and orphaned threads. The new preview adds an onTimeout() callback to the Joiner interface and streamlines method names.
+524
+PEM Encodings of Cryptographic Objects (2nd Preview)
+Refines the API for encoding/decoding cryptographic keys and certificates to and from the PEM format. The PEMEncoder and PEMDecoder now support encrypting and decrypting KeyPair objects.
+529
+Vector API (11th Incubator)
+Continues refining the API that translates complex vector mathematical computations directly into optimal hardware instructions on supported CPUs at runtime.
+
+
+Here are the code examples demonstrating how to use the new HTTP/3 support and the Lazy Constants API introduced in Java 26.
+1. HTTP/3 for the HTTP Client API (JEP 517)
+To use HTTP/3, you explicitly configure the native HttpClient builder with the HTTP_3 version constant. The underlying implementation utilizes QUIC for transport. If the destination server does not support HTTP/3, the Java client is designed to gracefully fall back to HTTP/2 or HTTP/1.1.
+Java
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+
+public class Http3Example {
+    public static void main(String[] args) throws Exception {
+        // Build the client, explicitly requesting HTTP/3
+        HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_3)
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+
+        // Create a standard GET request
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://example.com"))
+                .GET()
+                .build();
+
+        // Send the request
+        HttpResponse<String> response = client.send(
+                request, 
+                HttpResponse.BodyHandlers.ofString()
+        );
+        
+        System.out.println("Response Status: " + response.statusCode());
+        
+        // Verify which protocol was actually negotiated and used
+        System.out.println("Protocol Used: " + response.version());
+    }
+}
+
+
+2. Lazy Constants (JEP 526)
+Previously, deferring the initialization of heavy objects (like database connections or complex loggers) required manual thread-safety boilerplate, like the "double-checked locking" pattern. Furthermore, because these lazily initialized fields couldn't be marked as final, the JVM couldn't aggressively optimize them.
+Java 26 solves this with java.lang.LazyConstant. It guarantees thread-safe, at-most-once initialization while allowing the JVM to treat the value as a true constant (enabling constant-folding optimizations) once it is computed.
+Java
+import java.lang.LazyConstant;
+import java.util.logging.Logger;
+import java.util.List;
+
+public class LazyConstantExample {
+    
+    // EAGER INITIALIZATION (The old way)
+    // This logger is instantiated the moment the class is loaded, 
+    // slowing down startup even if the logger is never used.
+    private static final Logger EAGER_LOGGER = Logger.getLogger("Eager");
+    
+    // LAZY INITIALIZATION (The Java 26 way)
+    // We pass a Supplier (the computing function). The logger is NOT 
+    // created until the very first time .get() is invoked.
+    private final LazyConstant<Logger> lazyLogger = LazyConstant.of(
+        () -> {
+            System.out.println("--> Bootstrapping Logger... (This prints exactly once)");
+            return Logger.getLogger("LazyLogger");
+        }
+    );
+
+    public void processData() {
+        // The first call to .get() executes the computing function.
+        // All subsequent calls safely return the cached, immutable constant.
+        lazyLogger.get().info("Data processing started!");
+    }
+
+    public static void main(String[] args) {
+        LazyConstantExample example = new LazyConstantExample();
+        
+        System.out.println("Application started. Lazy Logger does not exist in memory yet.");
+        
+        // Trigger 1: Initializes the logger and prints the log.
+        example.processData(); 
+        
+        // Trigger 2: Reuses the initialized constant instantly.
+        example.processData(); 
+        
+        // --- BONUS: Lazy Lists ---
+        // Java 26 also extends this concept to collections.
+        // Elements are only computed when accessed by their specific index.
+        List<Double> lazySquareRoots = List.ofLazy(100, index -> Math.sqrt(index));
+        
+        System.out.println("Square root of 16 is: " + lazySquareRoots.get(16));
+    }
+}
+
+
+To help visualize why LazyConstant is so beneficial for large-scale applications, you can explore the interactive simulation below. It demonstrates how application startup times and memory footprints differ when components are initialized eagerly versus lazily on-demand.
+
+Yes, we have covered all of them. The official JDK 26 release (GA on March 17, 2026) contains exactly 10 JDK Enhancement Proposals (JEPs). There are no hidden major features outside of this list.
+If you are drafting a skills.md or a release summary, you have the complete picture. Here is a concise checklist format you can drop directly into your document to ensure all bases are covered:
+JDK 26 Skills & Feature Checklist
+Core Language & API Modifications
+[ ] JEP 500: Prepare to Make Final Mean Final: Understanding the new runtime warnings for deep reflection mutations of final fields and how to run code safely without breaking JVM optimizations.
+[ ] JEP 517: HTTP/3 for the HTTP Client API: Implementing the native HttpClient using QUIC-based HTTP/3 with automatic downgrades to HTTP/2.
+[ ] JEP 504: Remove the Applet API: Confirmed removal of java.applet legacy code.
+Performance & JVM Tuning
+[ ] JEP 516: Ahead-of-Time (AOT) Object Caching with Any GC: Utilizing GC-agnostic cached objects (via -XX:+AOTStreamableObjects) to accelerate startup times alongside low-latency collectors like ZGC.
+[ ] JEP 522: G1 GC - Reduce Synchronization: Leveraging the 5–15% throughput gains in reference-heavy workloads by utilizing the newly separated GC card tables.
+Security & Cryptography
+[ ] JEP 524: PEM Encodings of Cryptographic Objects (2nd Preview): Using PEMEncoder and PEMDecoder to safely encrypt/decrypt KeyPair and PKCS8EncodedKeySpec objects.
+Incubators & Previews (Evaluating Future Tech)
+[ ] JEP 525: Structured Concurrency (6th Preview): Applying the new onTimeout() callback in custom Joiner implementations to prevent orphaned threads.
+[ ] JEP 526: Lazy Constants (2nd Preview): Implementing thread-safe, on-demand component initialization using LazyConstant.of() without sacrificing JVM constant-folding optimizations.
+[ ] JEP 530: Primitive Types in Patterns (4th Preview): Writing safer type conversions using unconditional exactness and tighter dominance checks in switch statements.
+[ ] JEP 529: Vector API (11th Incubator): Mapping complex math directly to CPU vector instructions for high-performance workloads.
+If your document needs to cover anything prior to January 2026 (like the finalized features in JDK 25 from September 2025), let me know and we can map those out as well.
+

@@ -74,6 +74,30 @@ class RetrievalServiceTest {
     }
 
     @Test
+    void sequentialModePreservesOrderAndRunsOnCallerThread() throws Exception {
+        Thread caller = Thread.currentThread();
+        java.util.List<Thread> fetchThreads = new java.util.ArrayList<>();
+        SearchClient search = (q, n) -> List.of("https://a/1", "https://b/2", "https://c/3");
+        PageFetcher fetcher = url -> {
+            synchronized (fetchThreads) {
+                fetchThreads.add(Thread.currentThread());
+            }
+            return "<html><head><title>" + url + "</title></head><body>"
+                    + "<p>A sufficiently long paragraph of documentation text here.</p></body></html>";
+        };
+        RetrievalService service = new RetrievalService(
+                search, fetcher, new DateExtractor(), new AuthorityScorer(java.util.Set.of()), true);
+
+        List<Source> sources = service.retrieve(List.of("q"), 5);
+
+        // Order in == order out, and nothing fanned out to a worker thread.
+        assertEquals(List.of("https://a/1", "https://b/2", "https://c/3"),
+                sources.stream().map(s -> s.url).toList());
+        assertTrue(fetchThreads.stream().allMatch(t -> t == caller),
+                "sequential fetches must run on the caller thread");
+    }
+
+    @Test
     void skipsPagesThatFailToFetch() throws Exception {
         SearchClient search = (q, n) -> List.of("https://broken");
         PageFetcher fetcher = url -> {

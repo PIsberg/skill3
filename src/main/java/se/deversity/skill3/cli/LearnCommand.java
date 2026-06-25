@@ -94,8 +94,9 @@ public class LearnCommand implements Callable<Integer> {
 
     @Option(names = "--verify", negatable = true,
             description = "Re-ground every claim against the sources after synthesis (accuracy gate, "
-                    + "one extra model call). Defaults to ON for capable hosted providers "
-                    + "(openai/anthropic) and OFF for local; use --verify / --no-verify to force.")
+                    + "one extra model call). ON by default for every provider; pass --no-verify to "
+                    + "opt out. A capable model grounds best — a weak local model may rewrite rather "
+                    + "than ground, but accuracy is the safer default.")
     Boolean verify;
 
     @Option(names = "--dry-run",
@@ -187,15 +188,21 @@ public class LearnCommand implements Callable<Integer> {
                 ? java.util.Set.of()
                 : java.util.Set.copyOf(authoritative);
 
-        // Verification is the accuracy gate. Default it ON for capable hosted providers and OFF for
-        // local (a weak local model tends to rewrite rather than ground). Either way, warn loudly
-        // when shipping unverified so "looks clean" is never mistaken for "checked against sources".
+        // Verification is the accuracy gate, and accuracy is the safer default — so it is ON for
+        // every provider unless the caller explicitly opts out with --no-verify. When shipping
+        // unverified, warn loudly so "looks clean" is never mistaken for "checked against sources";
+        // when verifying with a non-capable provider, note that a weak model may rewrite rather
+        // than ground (the original reason local used to default off — now an advisory, not a default).
         boolean capableProvider = LlmProviderFactory.isCapable(provider);
-        boolean effectiveVerify = verify != null ? verify : capableProvider;
+        boolean effectiveVerify = verify != null ? verify : true;
         if (!effectiveVerify) {
             System.out.println("WARNING: shipping UNVERIFIED synthesis — claims are NOT re-grounded "
-                    + "against the sources. Add --verify to enable the accuracy gate"
-                    + (capableProvider ? "." : " (recommended once you use a capable model)."));
+                    + "against the sources (you passed --no-verify). Drop --no-verify to enable the "
+                    + "accuracy gate.");
+        } else if (!capableProvider) {
+            System.out.println("Note: verification is ON with a non-capable provider ('" + provider
+                    + "'); a weak model may rewrite rather than re-ground. Use a capable provider for "
+                    + "the strongest accuracy gate, or --no-verify to skip it.");
         }
 
         LearnPipeline.Options options = new LearnPipeline.Options(

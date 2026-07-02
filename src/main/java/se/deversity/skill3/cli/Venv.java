@@ -18,7 +18,11 @@ public final class Venv {
 
     /** Resolves an executable inside the venv (Scripts/ on Windows, bin/ on POSIX). */
     public static Path bin(String name) {
-        Path dir = isWindows() ? DIR.resolve("Scripts") : DIR.resolve("bin");
-        return dir.resolve(isWindows() ? name + ".exe" : name);
+        return bin(name, isWindows());
+    }
+
+    static Path bin(String name, boolean windows) {
+        Path dir = windows ? DIR.resolve("Scripts") : DIR.resolve("bin");
+        return dir.resolve(windows ? name + ".exe" : name);
     }
 }

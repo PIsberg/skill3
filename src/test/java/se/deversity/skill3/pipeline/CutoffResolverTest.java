@@ -19,6 +19,17 @@ class CutoffResolverTest {
     }
 
     @Test
+    void resolvesCurrentGenerationModels() {
+        // Reliable knowledge cutoffs per the published models overview (2026-07-02).
+        assertEquals(YearMonth.of(2026, 1), resolver.resolve("claude-fable-5", null).month());
+        assertEquals(YearMonth.of(2026, 1), resolver.resolve("claude-opus-4-7", null).month());
+        assertEquals(YearMonth.of(2026, 1), resolver.resolve("claude-sonnet-5", null).month());
+        assertEquals(YearMonth.of(2025, 8), resolver.resolve("claude-sonnet-4-6", null).month());
+        assertEquals(YearMonth.of(2025, 5), resolver.resolve("claude-opus-4-6", null).month());
+        assertEquals(YearMonth.of(2025, 2), resolver.resolve("claude-haiku-4-5", null).month());
+    }
+
+    @Test
     void overrideWinsOverModel() {
         Cutoff c = resolver.resolve("claude-opus-4-8", "2025-03");
         assertEquals(YearMonth.of(2025, 3), c.month());

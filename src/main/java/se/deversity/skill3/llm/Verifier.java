@@ -65,12 +65,15 @@ public class Verifier {
         List<Source> sources = bundle.sources();
         for (int i = 0; i < Math.min(MAX_SOURCES, sources.size()); i++) {
             Source s = sources.get(i);
-            sb.append("\n[").append(s.url).append("] published=").append(s.published).append('\n');
+            // Source-derived strings are neutralized so they cannot spoof the === frame
+            // markers and pose as a new prompt section (see PromptFraming).
+            sb.append("\n[").append(PromptFraming.neutralizeMarkers(s.url))
+                    .append("] published=").append(s.published).append('\n');
             for (String excerpt : EvidenceSelector.topByRelevance(s.excerpts, bundle.skillName(), MAX_EXCERPTS)) {
-                sb.append("- ").append(excerpt).append('\n');
+                sb.append("- ").append(PromptFraming.neutralizeMarkers(excerpt)).append('\n');
             }
             for (int j = 0; j < Math.min(MAX_CODE, s.codeBlocks.size()); j++) {
-                sb.append("- code: ").append(s.codeBlocks.get(j)).append('\n');
+                sb.append("- code: ").append(PromptFraming.neutralizeMarkers(s.codeBlocks.get(j))).append('\n');
             }
         }
         return sb.toString();

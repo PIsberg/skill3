@@ -106,9 +106,12 @@ public class Synthesizer {
         List<Source> sources = bundle.sources();
         for (int i = 0; i < Math.min(maxSources, sources.size()); i++) {
             Source s = sources.get(i);
-            sb.append("\n[Source ").append(i + 1).append("] ").append(s.url).append('\n');
+            // Every source-derived string is neutralized so it cannot spoof the === frame
+            // markers and escape the untrusted-data region (see PromptFraming).
+            sb.append("\n[Source ").append(i + 1).append("] ")
+                    .append(PromptFraming.neutralizeMarkers(s.url)).append('\n');
             if (!s.title.isBlank()) {
-                sb.append("title=").append(s.title).append('\n');
+                sb.append("title=").append(PromptFraming.neutralizeMarkers(s.title)).append('\n');
             }
             sb.append("authority=").append(String.format("%.2f", s.authority))
                     .append(" postCutoff=").append(s.postCutoff)
@@ -127,7 +130,8 @@ public class Synthesizer {
 
     private static void appendList(StringBuilder sb, String label, List<String> items, int max) {
         for (int i = 0; i < Math.min(max, items.size()); i++) {
-            sb.append("- ").append(label).append(": ").append(items.get(i)).append('\n');
+            sb.append("- ").append(label).append(": ")
+                    .append(PromptFraming.neutralizeMarkers(items.get(i))).append('\n');
         }
     }
 }

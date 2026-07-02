@@ -49,6 +49,25 @@ class CachingClientsTest {
     }
 
     @Test
+    void searchDistinguishesByFreshnessQualifier(@TempDir Path dir) throws IOException {
+        // Two runs with different cutoffs use different freshness windows; they must not
+        // share cache entries even though query and count are identical.
+        AtomicInteger calls = new AtomicInteger();
+        SearchClient delegate = (q, n) -> {
+            calls.incrementAndGet();
+            return List.of("https://a");
+        };
+        DiskCache cache = cache(dir);
+
+        new CachingSearchClient(delegate, cache, "2026-01-01to2026-06-22").search("mcp", 5);
+        new CachingSearchClient(delegate, cache, "2024-01-01to2026-06-22").search("mcp", 5);
+        assertEquals(2, calls.get()); // different window -> different entry
+
+        new CachingSearchClient(delegate, cache, "2026-01-01to2026-06-22").search("mcp", 5);
+        assertEquals(2, calls.get()); // same window -> served from cache
+    }
+
+    @Test
     void cachingSearchPropagatesCuratedFlag(@TempDir Path dir) {
         SearchClient curated = new SearchClient() {
             @Override public List<String> search(String q, int n) {

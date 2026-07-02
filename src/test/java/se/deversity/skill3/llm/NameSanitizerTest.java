@@ -35,6 +35,15 @@ class NameSanitizerTest {
     }
 
     @Test
+    void stripsReservedWordsReassembledByRemoval() {
+        // Removing the inner "claude" splices the outer halves into a fresh "claude";
+        // sanitization must re-scan until no reserved word remains.
+        assertEquals("learned-skill", NameSanitizer.sanitize("clauclaudede"));
+        assertEquals("learned-skill", NameSanitizer.sanitize("anthranthropicopic"));
+        assertEquals("x-y", NameSanitizer.sanitize("x clauclaudede y"));
+    }
+
+    @Test
     void neverContainsReservedWords() {
         String name = NameSanitizer.sanitize("Claude and Anthropic guide");
         assertFalse(name.contains("claude"));

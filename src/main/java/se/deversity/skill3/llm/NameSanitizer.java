@@ -23,7 +23,14 @@ public final class NameSanitizer {
     public static String sanitize(String raw) {
         String s = raw == null ? "" : raw.toLowerCase(Locale.ROOT);
         s = s.replaceAll("[^a-z0-9]+", "-");      // non-alnum -> hyphen
-        s = s.replaceAll("anthropic|claude", ""); // reserved words (substring rule)
+        // Reserved words (substring rule). Removing a match can splice the surrounding
+        // text into a new occurrence (e.g. "clauclaudede" -> "claude"), so repeat
+        // until a pass removes nothing.
+        String before;
+        do {
+            before = s;
+            s = s.replaceAll("anthropic|claude", "");
+        } while (!s.equals(before));
         s = s.replaceAll("-+", "-");              // collapse
         s = s.replaceAll("^-+|-+$", "");          // trim hyphens
         if (s.length() > MAX) {

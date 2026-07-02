@@ -35,7 +35,10 @@ public final class DiscoveryProvider {
         SearchClient search = new BraveSearchClient(apiKey, freshness);
         PageFetcher fetcher = new HttpPageFetcher();
         if (cache != null) {
-            search = new CachingSearchClient(search, cache);
+            // The freshness window is part of the request Brave sees but not of the
+            // search(query, count) signature, so it must qualify the cache key — otherwise
+            // runs with different cutoffs would share (wrong-window) cached results.
+            search = new CachingSearchClient(search, cache, freshness);
             fetcher = new CachingPageFetcher(fetcher, cache);
         }
         return new Sources(search, fetcher);

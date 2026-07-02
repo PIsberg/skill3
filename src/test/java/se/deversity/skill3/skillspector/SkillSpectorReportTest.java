@@ -54,6 +54,33 @@ class SkillSpectorReportTest {
     }
 
     @Test
+    void realSarifShapeYieldsCategoryMessageAndLocation() {
+        // Actual SARIF: camelCase ruleId, message as {"text": ...}, location nested under
+        // locations[0].physicalLocation. The flattened fixture above hides all three.
+        String sarif = """
+                {"runs":[{"results":[{
+                  "ruleId": "PI001",
+                  "level": "error",
+                  "message": {"text": "Possible injection vector."},
+                  "locations": [{"physicalLocation": {
+                    "artifactLocation": {"uri": "SKILL.md"},
+                    "region": {"startLine": 12}
+                  }}]
+                }]}]}
+                """;
+        SkillSpectorReport report = SkillSpectorReport.parse(sarif);
+
+        assertEquals(1, report.findings().size());
+        Finding f = report.findings().get(0);
+        assertEquals("PI001", f.category());
+        assertEquals("error", f.severity());
+        assertEquals("Possible injection vector.", f.message());
+        assertEquals("SKILL.md", f.file());
+        assertEquals(12, f.line());
+        assertEquals(1, report.highSeverityFindings().size()); // level "error" blocks
+    }
+
+    @Test
     void highSeverityFindingsKeepOnlyBlockingSeverities() {
         SkillSpectorReport report = new SkillSpectorReport(List.of(
                 new Finding("a", "LOW", "m", "f", 1),

@@ -66,6 +66,18 @@ class LearnCommandTest {
     }
 
     @Test
+    void nonPositiveMaxTokensExitsTwo() {
+        assertEquals(2, run("mcp", "--llm-model", "m", "--input-file", "whatever.txt",
+                "--max-tokens", "0"));
+    }
+
+    @Test
+    void outOfRangeTemperatureExitsTwo() {
+        assertEquals(2, run("mcp", "--llm-model", "m", "--input-file", "whatever.txt",
+                "--temperature", "3.5"));
+    }
+
+    @Test
     void unreadableInputFileExitsTwo(@TempDir Path dir) {
         assertEquals(2, run("mcp", "--llm-model", "m",
                 "--input-file", dir.resolve("missing.txt").toString()));

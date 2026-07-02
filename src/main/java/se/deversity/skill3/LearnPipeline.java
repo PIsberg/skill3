@@ -209,7 +209,10 @@ public class LearnPipeline {
             System.out.println("Vetting input corpus (prompt-injection / secret leakage) before synthesis...");
             long tInVet = System.nanoTime();
             try {
-                inputVet = new InputVetter(spector).vet(ranked, new ProgressBar(System.out));
+                // \r-redraw only on an interactive console; piped/CI output gets no bar
+                // (frames would land as garbled concatenated lines in the log).
+                inputVet = new InputVetter(spector).vet(ranked,
+                        new ProgressBar(System.out, System.console() != null));
                 reportInputVetting(inputVet);
                 if (!inputVet.quarantined().isEmpty()) {
                     forSynthesis = inputVet.kept();

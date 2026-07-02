@@ -42,6 +42,9 @@ import java.util.concurrent.Future;
 public class RetrievalService {
 
     private static final int MAX_EXCERPTS = 40;
+    private static final int MAX_CODE_BLOCKS = 40;
+    /** Per-block cap; a single giant <pre> (minified bundle, data dump) is not evidence. */
+    private static final int MAX_CODE_BLOCK_CHARS = 8000;
 
     private final SearchClient search;
     private final PageFetcher fetcher;
@@ -162,9 +165,12 @@ public class RetrievalService {
                 + " [role=navigation], [role=banner], [role=contentinfo],"
                 + " .sidebar, .toc, .breadcrumb, .cookie-banner, .cookie-consent").remove();
         for (Element code : doc.select("pre")) {
+            if (s.codeBlocks.size() >= MAX_CODE_BLOCKS) {
+                break; // capped like excerpts: a pathological page must not balloon memory/tokens
+            }
             String text = code.text();
             if (!text.isBlank()) {
-                s.codeBlocks.add(text.strip());
+                s.codeBlocks.add(truncate(text.strip(), MAX_CODE_BLOCK_CHARS));
             }
         }
         for (Element block : doc.select("h1, h2, h3, p, li")) {
@@ -176,5 +182,9 @@ public class RetrievalService {
                 s.excerpts.add(text);
             }
         }
+    }
+
+    private static String truncate(String text, int max) {
+        return text.length() <= max ? text : text.substring(0, max);
     }
 }

@@ -28,7 +28,9 @@ class FreshnessFilterTest {
         Source post = source("https://a", 1.0, LocalDate.of(2026, 5, 1));
         Source pre = source("https://b", 1.0, LocalDate.of(2025, 6, 1));
 
-        List<Source> out = new FreshnessFilter(cutoff, false).apply(List.of(pre, post));
+        // today == the post source's publish date, so its decayed weight is exactly 1.0
+        List<Source> out = new FreshnessFilter(cutoff, false, LocalDate.of(2026, 5, 1))
+                .apply(List.of(pre, post));
 
         assertEquals("https://a", out.get(0).url);
         assertTrue(post.postCutoff);
@@ -52,7 +54,8 @@ class FreshnessFilterTest {
         Source pre = source("https://b", 1.0, LocalDate.of(2025, 6, 1));
         Source undated = source("https://c", 1.0, null);
 
-        List<Source> out = new FreshnessFilter(cutoff, true).apply(List.of(post, pre, undated));
+        List<Source> out = new FreshnessFilter(cutoff, true, LocalDate.of(2026, 6, 22))
+                .apply(List.of(post, pre, undated));
 
         assertEquals(1, out.size());
         assertEquals("https://a", out.get(0).url);
@@ -86,6 +89,15 @@ class FreshnessFilterTest {
         assertTrue(older.recencyWeight >= 0.6 && fresh.recencyWeight <= 1.0);
         assertTrue(older.recencyWeight > 0.5); // still above the pre-cutoff weight
         assertEquals("https://a", out.get(0).url);
+    }
+
+    @Test
+    void defaultConstructorAnchorsTodayToTheRealDate() {
+        // The 2-arg constructor must not disable the future-date guard: a source dated
+        // far in the future is dropped even when no explicit run date is supplied.
+        Source future = source("https://a", 1.0, LocalDate.of(9999, 1, 1));
+        List<Source> out = new FreshnessFilter(cutoff, false).apply(List.of(future));
+        assertTrue(out.isEmpty());
     }
 
     @Test

@@ -19,14 +19,19 @@ import java.util.Map;
         avoids = "hardcoding per-skill logic; the cutoff is always overridable via --cutoff-time")
 public class CutoffResolver {
 
-    // Overridable, may go stale. claude-opus-4-8 is asserted (Jan 2026);
-    // the others are illustrative — VERIFY before relying on them.
+    // "Reliable knowledge cutoff" per model from the published models overview
+    // (platform.claude.com/docs/en/about-claude/models/overview, retrieved 2026-07-02).
+    // Overridable via --cutoff-time; refresh from the same page when models ship.
     private static final Map<String, YearMonth> TABLE = new LinkedHashMap<>();
 
     static {
+        TABLE.put("claude-fable-5", YearMonth.of(2026, 1));
         TABLE.put("claude-opus-4-8", YearMonth.of(2026, 1));
-        TABLE.put("claude-opus-4-7", YearMonth.of(2025, 9));   // VERIFY
-        TABLE.put("claude-sonnet-4-6", YearMonth.of(2025, 7)); // VERIFY
+        TABLE.put("claude-opus-4-7", YearMonth.of(2026, 1));
+        TABLE.put("claude-opus-4-6", YearMonth.of(2025, 5));
+        TABLE.put("claude-sonnet-5", YearMonth.of(2026, 1));
+        TABLE.put("claude-sonnet-4-6", YearMonth.of(2025, 8));
+        TABLE.put("claude-haiku-4-5", YearMonth.of(2025, 2));
     }
 
     /**

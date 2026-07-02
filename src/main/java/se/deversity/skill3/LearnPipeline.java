@@ -209,7 +209,10 @@ public class LearnPipeline {
             System.out.println("Vetting input corpus (prompt-injection / secret leakage) before synthesis...");
             long tInVet = System.nanoTime();
             try {
-                inputVet = new InputVetter(spector).vet(ranked, new ProgressBar(System.out));
+                // \r-redraw only on an interactive console; piped/CI output gets no bar
+                // (frames would land as garbled concatenated lines in the log).
+                inputVet = new InputVetter(spector).vet(ranked,
+                        new ProgressBar(System.out, System.console() != null));
                 reportInputVetting(inputVet);
                 if (!inputVet.quarantined().isEmpty()) {
                     forSynthesis = inputVet.kept();
@@ -242,28 +245,41 @@ public class LearnPipeline {
             timings.put("verifyMs", elapsedMs(tVerify));
         }
 
-        Files.writeString(skillFile, skillMd);
-
         boolean vetted = false;
         SkillSpectorReport report = null;
         if (spector != null) {
+            // Vet in a staging directory, not the output dir: an aborted run must never leave
+            // an unvetted SKILL.md behind as if it were a finished skill, and the scanner
+            // shouldn't see leftovers (index.html, run.json) from a previous run.
             Reviser reviser = (current, rep) -> SkillMdPostProcessor.render(
                     model.complete(FIX_SYSTEM, fixPrompt(current, rep)), bundle,
                     LocalDate.now(ZoneId.systemDefault()));
             long tVet = System.nanoTime();
+            Path staging = Files.createTempDirectory("skill3-vet-");
             try {
                 SelfCorrectionLoop.Result res =
                         new SelfCorrectionLoop(spector, reviser, maxIterations)
-                                .run(req.outputDir(), skillFile, skillMd);
+                                .run(staging, staging.resolve("SKILL.md"), skillMd);
                 skillMd = res.skillMd();
                 report = res.finalReport();
                 vetted = true;
             } catch (SkillSpectorUnavailableException e) {
                 vetted = false; // skipped; skill still emitted
+            } catch (IOException e) {
+                // Same best-effort policy as input vetting: a scanner I/O failure (timeout,
+                // broken venv) must not sink the run — emit the skill unvetted and say so.
+                System.out.println("Output vetting error (skill emitted unvetted): " + e.getMessage());
+                vetted = false;
+            } finally {
+                Files.deleteIfExists(staging.resolve("SKILL.md"));
+                Files.deleteIfExists(staging);
             }
             timings.put("vetMs", elapsedMs(tVet));
         }
 
+        // All fallible phases (model calls, vetting) are done — only now touch the output dir,
+        // so a failed run leaves it exactly as it was.
+        Files.writeString(skillFile, skillMd);
         Path html = req.outputDir().resolve("index.html");
         Files.writeString(html, new WebPreviewGenerator().render(skillMd));
 

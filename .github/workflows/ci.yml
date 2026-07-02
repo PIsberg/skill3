@@ -10,9 +10,17 @@ permissions:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-latest covers the Windows-only branches (Venv Scripts/*.exe
+        # resolution, SetupCommand's `py -3.x` launcher) that a Linux-only CI
+        # never executes.
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
+        if: runner.os == 'Linux' # harden-runner supports Linux runners only
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
@@ -33,12 +41,20 @@ jobs:
       # + tests (JUnit + ArchUnit). VibeTags regenerates the guardrail files during compile.
       - name: Build, analyze and test
         run: ./gradlew build --no-daemon --stacktrace
+        shell: bash
+
+      # Smoke-test the real CLI entry point (Skill3App -> LearnCommand wiring), which unit
+      # tests never execute: an offline learn over the checked-in demo corpus, stopping
+      # after discovery + ranking. No network, no Brave key, no model call.
+      - name: Offline CLI smoke test
+        run: ./gradlew run --no-daemon --args="learn nimbus --llm-model smoke --input-file examples/demo-corpus.txt --dry-run"
+        shell: bash
 
       - name: Upload analysis & test reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: reports
+          name: reports-${{ matrix.os }}
           path: |
             build/reports/tests/test
             build/reports/pmd

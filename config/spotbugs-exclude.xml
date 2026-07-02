@@ -15,6 +15,14 @@
     <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
   </Match>
 
+  <!-- UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR: TruncatingSubscriber.subscription is assigned
+       in onSubscribe(), which the reactive-streams contract guarantees is signalled before any
+       onNext() — the dereference can never see the field unset. -->
+  <Match>
+    <Class name="se.deversity.skill3.pipeline.HttpPageFetcher$TruncatingSubscriber"/>
+    <Bug pattern="UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
+  </Match>
+
   <!-- EI_EXPOSE_REP2: the caching decorators intentionally hold their injected collaborators
        (a stateless delegate plus an effectively-immutable DiskCache of Path+Duration) by
        reference. This is dependency injection, not exposure of internal representation. -->

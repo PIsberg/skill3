@@ -125,9 +125,34 @@ public class LearnCommand implements Callable<Integer> {
                     + "skill is written either way.")
     boolean noFailOnFindings;
 
+    /** Default endpoint; also used to detect an explicitly-set (and thus warn-worthy) value. */
+    static final String DEFAULT_LLM_ENDPOINT = "http://localhost:11434";
+
     @Override
     public Integer call() {
         boolean fileMode = inputFile != null && !inputFile.isBlank();
+
+        if (maxTokens <= 0) {
+            System.err.println("--max-tokens must be positive (got " + maxTokens + ").");
+            return 2;
+        }
+        if (temperature != null && (temperature < 0 || temperature > 2)) {
+            System.err.println("--temperature must be within [0, 2] (got " + temperature + ").");
+            return 2;
+        }
+        // Silently-ignored options are confusing; say so once instead of dropping them quietly.
+        if (fileMode && braveKey != null) {
+            System.out.println("Note: --brave-key is ignored with --input-file (offline discovery).");
+        }
+        if ("anthropic".equalsIgnoreCase(llmProvider)) {
+            if (temperature != null) {
+                System.out.println("Note: --temperature is ignored for --llm-provider anthropic.");
+            }
+            if (llmEndpoint != null && !DEFAULT_LLM_ENDPOINT.equals(llmEndpoint)) {
+                System.out.println("Note: --llm-endpoint is ignored for --llm-provider anthropic "
+                        + "(the official SDK targets the hosted API).");
+            }
+        }
 
         String key = null;
         if (!fileMode) {
@@ -198,8 +223,12 @@ public class LearnCommand implements Callable<Integer> {
                     + (capableProvider ? "." : " (recommended once you use a capable model)."));
         }
 
+        // Discovery/vetting knobs come from Options.defaults() — one source of truth
+        // instead of re-hardcoding the same numbers here.
+        LearnPipeline.Options defaults = LearnPipeline.Options.defaults();
         LearnPipeline.Options options = new LearnPipeline.Options(
-                5, 2, 3, richContext, authoritativeHosts, effectiveVerify, sequential);
+                defaults.maxResults(), defaults.minAgreement(), defaults.maxIterations(),
+                richContext, authoritativeHosts, effectiveVerify, sequential);
 
         LearnPipeline pipeline = new LearnPipeline(
                 search,

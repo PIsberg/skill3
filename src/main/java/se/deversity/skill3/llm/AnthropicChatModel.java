@@ -85,11 +85,19 @@ public class AnthropicChatModel implements ChatModel {
             for (ContentBlock block : response.content()) {
                 block.text().ifPresent(text -> out.append(text.text()));
             }
+            if (out.toString().isBlank()) {
+                // A refusal or a response with no text blocks must not flow into the
+                // post-processor as an "empty draft" that silently becomes a stub skill.
+                throw new IOException("Anthropic response contained no text (stop_reason="
+                        + response.stopReason() + ")");
+            }
             return out.toString();
         } catch (RuntimeException e) {
             // SDK surfaces HTTP/transport failures as unchecked exceptions; the pipeline
-            // treats synthesis failures as IOExceptions.
-            throw new IOException("Anthropic request failed: " + e.getMessage(), e);
+            // treats synthesis failures as IOExceptions. getMessage() can be null, so
+            // include the exception class for a diagnosable message either way.
+            throw new IOException("Anthropic request failed: " + e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
         }
     }
 }

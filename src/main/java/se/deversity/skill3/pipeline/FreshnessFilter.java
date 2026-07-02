@@ -36,7 +36,9 @@ public class FreshnessFilter {
     private final LocalDate today;
 
     public FreshnessFilter(Cutoff cutoff, boolean strict) {
-        this(cutoff, strict, LocalDate.MAX);
+        // Default to the real run date: LocalDate.MAX here would silently disable both
+        // the future-date guard and recency decay for any caller of this constructor.
+        this(cutoff, strict, LocalDate.now());
     }
 
     public FreshnessFilter(Cutoff cutoff, boolean strict, LocalDate today) {

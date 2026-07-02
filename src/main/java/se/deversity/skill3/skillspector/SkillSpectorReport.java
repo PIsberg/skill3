@@ -3,6 +3,7 @@ package se.deversity.skill3.skillspector;
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -61,12 +62,18 @@ public class SkillSpectorReport {
             if (array != null) {
                 for (JsonNode n : array) {
                     JsonNode loc = n.path("location");
+                    // Real SARIF nests location under locations[0].physicalLocation.
+                    JsonNode sarifLoc = n.path("locations").path(0).path("physicalLocation");
                     findings.add(new Finding(
-                            text(n, "category", "id", "rule_id", "rule", "type"),
+                            text(n, "category", "id", "rule_id", "ruleId", "rule", "type"),
                             text(n, "severity", "level"),
                             text(n, "explanation", "message", "finding", "description", "detail"),
-                            firstNonEmpty(text(loc, "file", "path"), text(n, "file", "path")),
-                            firstNonNegative(intOf(loc, "start_line", "line"), intOf(n, "line", "lineNumber"))));
+                            firstNonEmpty(text(loc, "file", "path"),
+                                    firstNonEmpty(text(n, "file", "path"),
+                                            text(sarifLoc.path("artifactLocation"), "uri"))),
+                            firstNonNegative(intOf(loc, "start_line", "line"),
+                                    firstNonNegative(intOf(n, "line", "lineNumber"),
+                                            intOf(sarifLoc.path("region"), "startLine")))));
                 }
             }
         } catch (JacksonException | RuntimeException e) {
@@ -95,12 +102,25 @@ public class SkillSpectorReport {
 
     private static String text(JsonNode n, String... keys) {
         for (String k : keys) {
-            JsonNode v = n.get(k);
-            if (v != null && !v.isNull()) {
-                return v.asText();
+            String value = textValue(n.get(k));
+            if (value != null) {
+                return value;
             }
         }
         return "";
+    }
+
+    /** {@return the node's text, unwrapping the SARIF {@code {"text": …}} object form; null if absent} */
+    private static @Nullable String textValue(@Nullable JsonNode v) {
+        if (v == null || v.isNull()) {
+            return null;
+        }
+        if (v.isObject()) {
+            // SARIF wraps messages as {"text": "..."}; asText() on an object is "".
+            JsonNode inner = v.get("text");
+            return inner != null && inner.isTextual() ? inner.asText() : null;
+        }
+        return v.asText();
     }
 
     private static int intOf(JsonNode n, String... keys) {

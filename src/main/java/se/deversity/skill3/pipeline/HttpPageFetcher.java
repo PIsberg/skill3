@@ -3,6 +3,7 @@ package se.deversity.skill3.pipeline;
 import se.deversity.skill3.net.HttpRetry;
 import se.deversity.vibetags.annotations.AISecure;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
@@ -10,8 +11,15 @@ import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Flow;
 
 /**
  * {@link PageFetcher} over {@link HttpClient}. URLs come from search results or a user
@@ -30,8 +38,11 @@ public class HttpPageFetcher implements PageFetcher {
     private static final String UA =
             "Mozilla/5.0 (compatible; Skill3/0.1; +https://github.com/)";
     private static final int MAX_REDIRECTS = 5;
-    /** Cap on the returned body; documentation pages well under this, runaway responses bounded. */
-    private static final int MAX_CHARS = 8 * 1024 * 1024;
+    /**
+     * Cap on the downloaded body, enforced while the response streams in — a hostile server
+     * must not be able to buffer an unbounded body in memory before a post-hoc cap applies.
+     */
+    private static final int MAX_BYTES = 8 * 1024 * 1024;
     private static final HttpRetry RETRY = new HttpRetry();
 
     private final HttpClient http;
@@ -54,8 +65,7 @@ public class HttpPageFetcher implements PageFetcher {
             HttpResponse<String> resp = send(uri);
             int code = resp.statusCode();
             if (code / 100 == 2) {
-                String body = resp.body();
-                return body.length() > MAX_CHARS ? body.substring(0, MAX_CHARS) : body;
+                return resp.body(); // already size-capped while streaming by boundedBody()
             }
             if (code / 100 != 3) {
                 throw new IOException("Fetch of " + uri + " returned HTTP " + code);
@@ -77,10 +87,100 @@ public class HttpPageFetcher implements PageFetcher {
                 .GET()
                 .build();
         try {
-            return RETRY.execute(() -> http.send(req, HttpResponse.BodyHandlers.ofString()));
+            return RETRY.execute(() -> http.send(req, boundedBody()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Fetch interrupted: " + uri, e);
+        }
+    }
+
+    /**
+     * Body handler that enforces {@link #MAX_BYTES} during the download (see the constant's
+     * javadoc) and decodes with the charset declared in {@code Content-Type} instead of
+     * assuming UTF-8, so e.g. ISO-8859-1 documentation pages aren't silently mangled.
+     */
+    private static HttpResponse.BodyHandler<String> boundedBody() {
+        return info -> {
+            Charset cs = charset(info.headers().firstValue("content-type").orElse(""));
+            return HttpResponse.BodySubscribers.mapping(
+                    new TruncatingSubscriber(MAX_BYTES), bytes -> new String(bytes, cs));
+        };
+    }
+
+    /** {@return the charset declared in {@code contentType}, or UTF-8 if absent or unknown} */
+    static Charset charset(String contentType) {
+        int at = contentType.toLowerCase(Locale.ROOT).indexOf("charset=");
+        if (at < 0) {
+            return StandardCharsets.UTF_8;
+        }
+        String name = contentType.substring(at + "charset=".length());
+        int semi = name.indexOf(';');
+        if (semi >= 0) {
+            name = name.substring(0, semi);
+        }
+        try {
+            return Charset.forName(name.replace("\"", "").strip());
+        } catch (IllegalArgumentException unknown) {
+            return StandardCharsets.UTF_8;
+        }
+    }
+
+    /**
+     * Collects the response body up to a byte cap, then cancels the upstream subscription and
+     * completes with the truncated prefix — so an oversized response never occupies more than
+     * {@code cap} bytes of heap. Reactive-stream signals are serialized by contract, so the
+     * mutable state needs no synchronization; the result future carries the cross-thread
+     * hand-off to {@code getBody()} readers.
+     */
+    static final class TruncatingSubscriber implements HttpResponse.BodySubscriber<byte[]> {
+
+        private final int cap;
+        private final ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        private final CompletableFuture<byte[]> result = new CompletableFuture<>();
+        private Flow.Subscription subscription;
+
+        TruncatingSubscriber(int cap) {
+            this.cap = cap;
+        }
+
+        @Override
+        public CompletionStage<byte[]> getBody() {
+            // Minimal view: callers must not be able to complete the internal future.
+            return result.minimalCompletionStage();
+        }
+
+        @Override
+        public void onSubscribe(Flow.Subscription subscription) {
+            this.subscription = subscription;
+            subscription.request(Long.MAX_VALUE);
+        }
+
+        @Override
+        public void onNext(List<ByteBuffer> items) {
+            if (result.isDone()) {
+                return; // already truncated; late chunks are dropped
+            }
+            for (ByteBuffer b : items) {
+                int take = Math.min(b.remaining(), cap - buf.size());
+                byte[] chunk = new byte[take];
+                b.get(chunk);
+                buf.write(chunk, 0, take);
+                if (buf.size() >= cap) {
+                    subscription.cancel();
+                    result.complete(buf.toByteArray());
+                    return;
+                }
+            }
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            result.completeExceptionally(t); // no-op if already completed by truncation
+        }
+
+        @Override
+        public void onComplete() {
+            result.complete(buf.toByteArray()); // no-op if already completed by truncation
         }
     }
 

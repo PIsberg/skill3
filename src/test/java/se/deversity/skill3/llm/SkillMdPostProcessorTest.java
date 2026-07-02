@@ -193,6 +193,20 @@ class SkillMdPostProcessorTest {
     }
 
     @Test
+    void closingDelimiterAtEndOfInputYieldsEmptyBodyNotWholeDocument() {
+        // The draft ends exactly at the closing --- with no trailing newline. The body is
+        // empty (-> synthesized fallback), and none of the frontmatter — including keys the
+        // leak-stripper doesn't recognise, like license: — may be re-parsed as body content.
+        String raw = "---\nname: mcp\ndescription: A real one-sentence description of the skill."
+                + "\nlicense: MIT\n---";
+        String out = SkillMdPostProcessor.render(raw, bundle, LocalDate.of(2026, 6, 22));
+
+        assertFalse(out.contains("license: MIT"));
+        assertTrue(out.contains("description: \"A real one-sentence description of the skill.\""));
+        assertTrue(out.contains("## Overview")); // fallback body synthesized from the description
+    }
+
+    @Test
     void stampsAttributionFooter() {
         String raw = "# MCP\n\nUse the _meta field on every request.";
         String out = SkillMdPostProcessor.render(raw, bundle, LocalDate.of(2026, 6, 22));

@@ -13,9 +13,11 @@ import se.deversity.skill3.skillspector.Finding;
 import se.deversity.skill3.skillspector.SkillSpectorReport;
 import se.deversity.skill3.skillspector.SkillSpectorRunner;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -205,6 +207,50 @@ class LearnPipelineE2ETest {
 
         assertTrue(res.vetted());
         assertTrue(res.clean());
+    }
+
+    @Test
+    void outputVetIoFailureEmitsSkillUnvetted(@TempDir Path dir) throws Exception {
+        // Same best-effort policy as input vetting: a scanner I/O failure (e.g. timeout)
+        // must not sink the run — the skill is emitted and honestly marked unvetted.
+        Map<String, String> pages = Map.of("https://a.com/doc", page("2026-05-01", "x();"));
+        SkillSpectorReport clean = new SkillSpectorReport(List.of(), "[]");
+        SkillSpectorRunner spector = mock(SkillSpectorRunner.class);
+        // First scan is the input-corpus vet; the output vet then fails with an I/O error.
+        when(spector.scan(any())).thenReturn(clean).thenThrow(new IOException("scan timed out"));
+
+        LearnPipeline pipeline = new LearnPipeline(
+                search("https://a.com/doc"), fetcher(pages), new DateExtractor(), model(), spector);
+        LearnPipeline.Result res = pipeline.run(request(dir, false));
+
+        assertFalse(res.vetted());
+        assertTrue(Files.exists(res.skillFile()));
+        assertTrue(Files.exists(res.manifestFile()));
+    }
+
+    @Test
+    void vettingRunsInStagingSoOutputDirStaysCleanUntilDone(@TempDir Path dir) throws Exception {
+        // The output dir must never hold an unvetted SKILL.md while the scanner is running,
+        // and the scanner must scan a staging dir (never the output dir with its leftovers).
+        Map<String, String> pages = Map.of("https://a.com/doc", page("2026-05-01", "x();"));
+        SkillSpectorReport clean = new SkillSpectorReport(List.of(), "[]");
+        SkillSpectorRunner spector = mock(SkillSpectorRunner.class);
+        List<Path> scannedDirs = new ArrayList<>();
+        List<Boolean> skillVisibleDuringScan = new ArrayList<>();
+        when(spector.scan(any())).thenAnswer(inv -> {
+            scannedDirs.add(inv.getArgument(0));
+            skillVisibleDuringScan.add(Files.exists(dir.resolve("SKILL.md")));
+            return clean;
+        });
+
+        LearnPipeline pipeline = new LearnPipeline(
+                search("https://a.com/doc"), fetcher(pages), new DateExtractor(), model(), spector);
+        LearnPipeline.Result res = pipeline.run(request(dir, false));
+
+        assertTrue(res.vetted());
+        assertTrue(Files.exists(res.skillFile())); // written only after vetting finished
+        assertTrue(scannedDirs.stream().noneMatch(p -> p.equals(dir)));
+        assertTrue(skillVisibleDuringScan.stream().noneMatch(visible -> visible));
     }
 
     @Test

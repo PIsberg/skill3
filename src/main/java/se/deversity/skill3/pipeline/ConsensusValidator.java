@@ -17,7 +17,12 @@ import java.util.Set;
  */
 public class ConsensusValidator {
 
-    private static final double HIGH_AUTHORITY = 0.7;
+    /**
+     * Authority at which a lone block bypasses consensus. Deliberately above the 0.7 a
+     * plain github.com source scores ("standard repository, sits in the middle") — only
+     * genuinely authoritative hosts (per-run 1.0) skip the cross-source agreement test.
+     */
+    private static final double HIGH_AUTHORITY = 0.8;
 
     private final int minAgreement;
 
@@ -56,6 +61,9 @@ public class ConsensusValidator {
     }
 
     static String normalize(String block) {
-        return block == null ? "" : block.replaceAll("\\s+", "");
+        // Collapse whitespace runs to one space instead of deleting them: removal made
+        // token boundaries vanish, so distinct snippets (e.g. differently-indented,
+        // whitespace-significant code) collapsed to the same key and falsely "agreed".
+        return block == null ? "" : block.strip().replaceAll("\\s+", " ");
     }
 }

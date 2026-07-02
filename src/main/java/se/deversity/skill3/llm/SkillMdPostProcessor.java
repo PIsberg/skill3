@@ -45,7 +45,11 @@ public final class SkillMdPostProcessor {
             int end = content.indexOf("\n---", 3);
             if (end >= 0) {
                 frontmatter = content.substring(3, end).strip();
-                body = content.substring(content.indexOf('\n', end + 1) + 1).strip();
+                // No newline after the closing --- means the draft ends there: the body
+                // is empty, not the whole document (indexOf would return -1, and -1 + 1
+                // would silently re-parse everything from offset 0 as the body).
+                int bodyStart = content.indexOf('\n', end + 1);
+                body = bodyStart >= 0 ? content.substring(bodyStart + 1).strip() : "";
             }
         }
 

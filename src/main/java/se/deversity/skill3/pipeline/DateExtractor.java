@@ -5,6 +5,7 @@ import org.jsoup.nodes.Element;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,7 +22,20 @@ public class DateExtractor {
             "meta[name=date]",
             "meta[name=publish-date]",
             "meta[property=og:published_time]",
-            "meta[property=og:updated_time]",
+    };
+
+    /**
+     * Update timestamp, not a publication date: an old article re-touched yesterday must not
+     * score as fresh post-cutoff evidence, so this is consulted only after every true
+     * published-date signal (meta, {@code <time>}, JSON-LD) has failed.
+     */
+    private static final String UPDATED_TIME_SELECTOR = "meta[property=og:updated_time]";
+
+    /** Non-ISO shapes seen in the wild: RFC-1123 (`Tue, 21 May 2026 …`), slashes, unpadded ISO. */
+    private static final DateTimeFormatter[] FALLBACK_FORMATS = {
+            DateTimeFormatter.RFC_1123_DATE_TIME,
+            DateTimeFormatter.ofPattern("yyyy/M/d"),
+            DateTimeFormatter.ofPattern("yyyy-M-d"),
     };
 
     private static final Pattern JSON_LD_DATE =
@@ -57,6 +71,10 @@ public class DateExtractor {
                 }
             }
         }
+        Element updated = doc.selectFirst(UPDATED_TIME_SELECTOR);
+        if (updated != null) {
+            return parse(updated.attr("content")); // last resort; see UPDATED_TIME_SELECTOR
+        }
         return null;
     }
 
@@ -73,7 +91,15 @@ public class DateExtractor {
         try {
             return LocalDate.parse(s.substring(0, Math.min(10, s.length())));
         } catch (Exception ignored) {
-            return null;
+            // fall through
         }
+        for (DateTimeFormatter format : FALLBACK_FORMATS) {
+            try {
+                return LocalDate.parse(s, format);
+            } catch (Exception ignored) {
+                // try the next shape
+            }
+        }
+        return null;
     }
 }

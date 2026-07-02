@@ -46,4 +46,39 @@ class DateExtractorTest {
         assertNull(DateExtractor.parse("not a date"));
         assertNull(DateExtractor.parse(""));
     }
+
+    @Test
+    void parseHandlesCommonNonIsoShapes() {
+        assertEquals(LocalDate.of(2026, 5, 21), DateExtractor.parse("Thu, 21 May 2026 10:00:00 GMT"));
+        assertEquals(LocalDate.of(2026, 5, 21), DateExtractor.parse("2026/05/21"));
+        assertEquals(LocalDate.of(2026, 5, 1), DateExtractor.parse("2026/5/1"));
+        assertEquals(LocalDate.of(2026, 5, 1), DateExtractor.parse("2026-5-1"));
+    }
+
+    @Test
+    void publishedDateBeatsUpdatedTime() {
+        // An old article re-touched recently must keep its publication date.
+        String html = "<html><head>"
+                + "<meta property='og:updated_time' content='2026-06-30T10:00:00Z'>"
+                + "<meta property='article:published_time' content='2024-02-01T10:00:00Z'>"
+                + "</head><body></body></html>";
+        assertEquals(LocalDate.of(2024, 2, 1), extractor.extract(Jsoup.parse(html)));
+    }
+
+    @Test
+    void jsonLdBeatsUpdatedTime() {
+        String html = "<html><head>"
+                + "<meta property='og:updated_time' content='2026-06-30T10:00:00Z'>"
+                + "<script type='application/ld+json'>{\"datePublished\":\"2024-01-15T00:00:00Z\"}</script>"
+                + "</head><body></body></html>";
+        assertEquals(LocalDate.of(2024, 1, 15), extractor.extract(Jsoup.parse(html)));
+    }
+
+    @Test
+    void updatedTimeIsUsedOnlyAsLastResort() {
+        String html = "<html><head>"
+                + "<meta property='og:updated_time' content='2026-06-30T10:00:00Z'>"
+                + "</head><body></body></html>";
+        assertEquals(LocalDate.of(2026, 6, 30), extractor.extract(Jsoup.parse(html)));
+    }
 }

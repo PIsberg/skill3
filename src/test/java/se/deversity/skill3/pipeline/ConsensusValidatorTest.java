@@ -46,11 +46,32 @@ class ConsensusValidatorTest {
     }
 
     @Test
-    void whitespaceIgnoredForAgreement() {
-        Source a = source("https://a.com", 0.5, "a( b )");
-        Source b = source("https://b.com", 0.5, "a(b)");
+    void whitespaceRunsCollapseForAgreement() {
+        // Formatting drift (extra spaces, line wrapping) still matches...
+        Source a = source("https://a.com", 0.5, "a(  b );\n  c();");
+        Source b = source("https://b.com", 0.5, "a( b ); c();");
         new ConsensusValidator(2).annotate(List.of(a, b));
         assertEquals(2, a.consensusCount);
+    }
+
+    @Test
+    void tokenBoundariesAreNotErasedByNormalization() {
+        // ...but snippets that differ once whitespace is gone must not falsely agree
+        // (the old strip-all normalization mapped both of these to "a(b)c()").
+        Source a = source("https://a.com", 0.5, "a(b)c()");
+        Source b = source("https://b.com", 0.5, "a(b) c()");
+        new ConsensusValidator(2).annotate(List.of(a, b));
+        assertEquals(0, a.consensusCount);
+        assertTrue(a.codeBlocks.isEmpty());
+    }
+
+    @Test
+    void midAuthoritySourceDoesNotBypassConsensus() {
+        // github.com scores exactly 0.7 ("standard repository") — a lone block from it
+        // must still need cross-source agreement; only per-run authoritative hosts skip it.
+        Source gh = source("https://github.com/org/repo", 0.7, "unverified();");
+        new ConsensusValidator(2).annotate(List.of(gh));
+        assertTrue(gh.codeBlocks.isEmpty());
     }
 
     @Test

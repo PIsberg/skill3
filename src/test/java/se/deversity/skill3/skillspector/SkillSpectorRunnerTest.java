@@ -5,6 +5,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -16,6 +18,26 @@ class SkillSpectorRunnerTest {
     void missingExecutableThrowsUnavailable(@TempDir Path dir) {
         SkillSpectorRunner runner = new SkillSpectorRunner("skill3-nonexistent-binary-xyz");
         assertThrows(SkillSpectorUnavailableException.class, () -> runner.scan(dir));
+    }
+
+    @Test
+    void killsAndReportsWedgedScannerOnTimeout(@TempDir Path dir) {
+        // Simulate a hung scanner with a child JVM that sleeps far past the timeout.
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        SkillSpectorRunner runner = new SkillSpectorRunner(
+                java,
+                List.of("-cp", System.getProperty("java.class.path"), Sleeper.class.getName()),
+                Duration.ofMillis(500));
+
+        IOException e = assertThrows(IOException.class, () -> runner.scan(dir));
+        assertTrue(e.getMessage().contains("timed out"));
+    }
+
+    /** Child-process main that hangs long enough to trip any test timeout. */
+    public static final class Sleeper {
+        public static void main(String[] args) throws InterruptedException {
+            Thread.sleep(60_000);
+        }
     }
 
     @Test

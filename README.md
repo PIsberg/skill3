@@ -13,6 +13,7 @@
 [![CI](https://github.com/PIsberg/skill3/actions/workflows/ci.yml/badge.svg)](https://github.com/PIsberg/skill3/actions/workflows/ci.yml)
 [![Java 25](https://img.shields.io/badge/Java-25-orange?logo=openjdk)](https://adoptium.net/)
 [![Static analysis: Error Prone · PMD · SpotBugs · ArchUnit](https://img.shields.io/badge/static%20analysis-Error%20Prone%20%C2%B7%20PMD%20%C2%B7%20SpotBugs%20%C2%B7%20ArchUnit-success)](#development)
+[![Donate](https://img.shields.io/badge/Donate-PayPal-0079C1?logo=paypal&logoColor=white)](https://paypal.me/isbergpeter)
 
 Skill3 is a lightweight Java CLI that **relearns a technical skill** for an AI
 agent. It discovers documentation sources, scores them for **authority** and

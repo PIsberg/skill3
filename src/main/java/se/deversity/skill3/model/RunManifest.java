@@ -1,6 +1,7 @@
 package se.deversity.skill3.model;
 
 import org.jspecify.annotations.Nullable;
+import se.deversity.vibetags.annotations.AISchemaSafe;
 
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,10 @@ import java.util.Map;
  * only (dates as ISO strings), so it serializes with a default {@code ObjectMapper} and no extra
  * Jackson modules. Lists are defensively copied so the record stays immutable.
  */
+@AISchemaSafe(reason = "Serialized verbatim to run.json with a default ObjectMapper — the "
+        + "component names ARE the on-disk field names. Renaming, reordering into a different "
+        + "shape, or introducing a type that needs a Jackson module silently changes or breaks "
+        + "the provenance file that answers 'what produced this SKILL.md?'.")
 public record RunManifest(
         String generatedBy,
         String skill,

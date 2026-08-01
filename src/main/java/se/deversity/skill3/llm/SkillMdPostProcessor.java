@@ -2,6 +2,7 @@ package se.deversity.skill3.llm;
 
 import se.deversity.skill3.model.ContextBundle;
 import se.deversity.vibetags.annotations.AICore;
+import se.deversity.vibetags.annotations.AIIdempotent;
 
 import java.time.LocalDate;
 import java.util.Arrays;
@@ -36,6 +37,10 @@ public final class SkillMdPostProcessor {
     private SkillMdPostProcessor() {
     }
 
+    @AIIdempotent(reason = "SelfCorrectionLoop re-runs render() on its own output, so a "
+            + "revised draft passes through repeatedly. Every guarantee here must converge: exactly "
+            + "one frontmatter block and exactly one provenance footer, no matter how many "
+            + "revision rounds ran.")
     public static String render(String raw, ContextBundle bundle, LocalDate learnedDate) {
         String content = unwrapFencedDocument(stripCodeFence(raw == null ? "" : raw.strip()));
         String frontmatter = "";

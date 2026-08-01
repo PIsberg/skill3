@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import se.deversity.vibetags.annotations.AILoadBearing;
 
 /**
  * Vets the untrusted retrieved corpus <em>before</em> it reaches the synthesizer LLM.
@@ -38,6 +39,14 @@ import java.util.stream.Stream;
  * <p>Sources are the pipeline's mutable carriers, so redaction is applied in place: the
  * synthesizer that runs next only ever sees the sanitized, non-quarantined text.
  */
+@AILoadBearing(
+        invariant = "A quarantined source is dropped from the set handed to the synthesizer, but "
+                + "its finding is still recorded and still trips the run gate. Redaction runs "
+                + "FIRST and unconditionally, so a secret never reaches the model even when "
+                + "SkillSpector is unavailable — and when it is unavailable nothing is gated, "
+                + "because absence of findings is observed, never asserted.",
+        breaksIf = "quarantining is treated as resolving the finding, redaction is made "
+                + "conditional on the scanner being present, or a skipped scan is reported as clean")
 public final class InputVetter {
 
     /** Per-source scan filenames are {@code source-N.txt}; this maps a finding's file back to N. */

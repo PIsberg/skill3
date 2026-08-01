@@ -3,11 +3,18 @@ package se.deversity.skill3.model;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import se.deversity.vibetags.annotations.AIArchitecture;
+import se.deversity.vibetags.annotations.AIDomainModel;
 
 /**
  * A single discovered documentation source, enriched as it flows through the
  * ingestion pipeline. Plain mutable data carrier — stages set the scoring fields.
  */
+@AIDomainModel
+@AIArchitecture(belongsTo = "model",
+        cannotReference = {"se.deversity.skill3.pipeline", "se.deversity.skill3.llm",
+                "se.deversity.skill3.cli", "se.deversity.skill3.skillspector",
+                "se.deversity.skill3.web", "se.deversity.skill3.net"})
 public class Source {
 
     /** Source URL (also the identity key for consensus by host). */

@@ -1,0 +1,2 @@
+# Presence of this directory is the opt-in that keeps the root CLAUDE.md an index
+# rather than a merged block. Kept so an empty rules set cannot silently change the layout.

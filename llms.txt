@@ -19,11 +19,25 @@ AI tools reading this file should respect the guardrails defined below. These ru
 - [SkillMdPostProcessor](se.deversity.skill3.llm.SkillMdPostProcessor): Sensitivity: High. Note: Deterministically guarantees SKILL.md spec compliance; model output is never trusted. Changes risk emitting invalid frontmatter — keep the parsing and frontmatter synthesis covered by SkillMdPostProcessorTest.
 - [Verifier](se.deversity.skill3.llm.Verifier): Sensitivity: High. Note: Accuracy gate that re-grounds claims against the sources. Only worthwhile with a capable model — a weak model rewrites rather than grounds. Keep the prompt strict about supported-claims-only and announced-vs-shipped.
 
+## 🔐 Contract-Frozen Signatures
+- [ChatModel](se.deversity.skill3.llm.ChatModel): The single seam every model-driven stage binds to — QueryPlanner, Synthesizer, Verifier and the self-correction Reviser all take this one interface, which is what lets one --llm-provider choice apply uniformly. Test fakes implement it directly, so changing the signature breaks every unit test that avoids a live model.
+- [PageFetcher](se.deversity.skill3.pipeline.PageFetcher): Fetch seam. Keeping page retrieval behind it is what lets extraction, date parsing and scoring be tested against HTML fixtures with no network, and it is the boundary at which --input-file replaces the network entirely.
+- [SearchClient](se.deversity.skill3.pipeline.SearchClient): Discovery seam. BraveSearchClient (live) and FileCorpus (--input-file) both implement it, and isCuratedCorpus() is what tells the pipeline to skip LLM query planning. Removing the default method, or changing what it returns, silently re-enables planning for a corpus that is already the curated result set.
+
 ## 🧵 Thread-Safe by Design
 - [RetrievalService](se.deversity.skill3.pipeline.RetrievalService): Strategy: IMMUTABLE. Note: Collaborators (PageFetcher/HttpClient, DateExtractor, AuthorityScorer) are stateless/immutable; each fetch task builds its own Source and results are merged on the caller thread. Keep it that way — do not share mutable state between fetch tasks. The opt-in `sequential` mode only removes concurrency (fetches run on the caller thread); it cannot weaken the invariant — serial execution is strictly safer than the parallel default it replaces.
 
 ## ❄️ Immutable Types
 - [ContextBundle](se.deversity.skill3.model.ContextBundle): immutable type — Immutable record; the sources list is defensively copied in the compact constructor.
+
+## Architectural Boundary Constraints
+- [Source](se.deversity.skill3.model.Source): Belongs to layer: `model`. Prohibited from referencing: [se.deversity.skill3.pipeline, se.deversity.skill3.llm, se.deversity.skill3.cli, se.deversity.skill3.skillspector, se.deversity.skill3.web, se.deversity.skill3.net]
+
+## Schema & Serialization Safety
+- [RunManifest](se.deversity.skill3.model.RunManifest): Schema/serialization safety guaranteed. Prohibit altering data formats or fields without migration plan. Reason: Serialized verbatim to run.json with a default ObjectMapper — the component names ARE the on-disk field names. Renaming, reordering into a different shape, or introducing a type that needs a Jackson module silently changes or breaks the provenance file that answers 'what produced this SKILL.md?'.
+
+## ♻️ Idempotency Guarantees
+- [SkillMdPostProcessor.render(java.lang.String,se.deversity.skill3.model.ContextBundle,java.time.LocalDate)](se.deversity.skill3.llm.SkillMdPostProcessor.render(java.lang.String,se.deversity.skill3.model.ContextBundle,java.time.LocalDate)): Idempotency guaranteed. Multiple invocations must produce the same result as one. Reason: SelfCorrectionLoop re-runs render() on its own output, so a revised draft passes through repeatedly. Every guarantee here must converge: exactly one frontmatter block and exactly one provenance footer, no matter how many revision rounds ran.
 
 ## 🔐 Security-Critical Code
 - [AnthropicChatModel](se.deversity.skill3.llm.AnthropicChatModel): Security-critical code [Anthropic API credential handling and hosted-provider network egress]. Do not weaken security properties. Flag any change for security review.
@@ -36,4 +50,29 @@ AI tools reading this file should respect the guardrails defined below. These ru
 
 ## Deterministic Pure Functions
 - [NameSanitizer.sanitize(java.lang.String)](se.deversity.skill3.llm.NameSanitizer.sanitize(java.lang.String)): Must remain a pure function. Forbid assignments to enclosing state, fields, or static members.
+
+## Framework-Free Domain Entities
+- [Source](se.deversity.skill3.model.Source): Pure Domain Model. Banned imports: [Spring, JPA, Hibernate, Jackson, etc.]. No external framework imports permitted.
+
+## Load-Bearing Oddities
+- [FileCorpus](se.deversity.skill3.pipeline.FileCorpus): Looks removable but is deliberate. Invariant: FileCorpus implements BOTH discovery seams — SearchClient and PageFetcher — and LearnCommand injects the same instance into both slots. That is the design, not a layering slip: it is what makes an offline --input-file run take the identical downstream path as a live Brave run, so the two modes cannot diverge. Breaks if changed: the class is split into two collaborators, or either interface is dropped — offline runs then follow a different path from live ones and stop proving anything about the real pipeline
+- [InputVetter](se.deversity.skill3.skillspector.InputVetter): Looks removable but is deliberate. Invariant: A quarantined source is dropped from the set handed to the synthesizer, but its finding is still recorded and still trips the run gate. Redaction runs FIRST and unconditionally, so a secret never reaches the model even when SkillSpector is unavailable — and when it is unavailable nothing is gated, because absence of findings is observed, never asserted. Breaks if changed: quarantining is treated as resolving the finding, redaction is made conditional on the scanner being present, or a skipped scan is reported as clean
 <!-- VIBETAGS-END -->
+
+## What Skill3 is
+
+Skill3 relearns a technical skill for an AI agent: it discovers documentation, scores it for
+authority and freshness against a target model's knowledge cutoff, synthesizes an Agent Skills
+`SKILL.md`, and vets both the input corpus and the output skill. A generated skill is a
+**post-cutoff delta, not a primer**, and discovery is **topic-agnostic** — the model plans the
+searches, so nothing is hardcoded per topic.
+
+## Documentation
+
+- [README](README.md): what it is, the knowledge-cutoff premise, and the pipeline at a glance.
+- [Install](docs/INSTALL.md): requirements, build, SkillSpector setup, Brave Search key.
+- [Usage](docs/USAGE.md): every `learn` flag, offline `--input-file` runs, model choice, and how the cutoff drives the search window.
+- [Architecture](docs/ARCHITECTURE.md): pipeline structure, trust boundaries, failure handling, and diagrams generated from the source.
+- [Specification](docs/SPEC.md): the full behavioural spec.
+- [Development](docs/DEVELOPMENT.md): build gates, release process, and how these guardrails are maintained.
+- [Example output](docs/EXAMPLE-OUTPUT.md): complete runs, start to finish.

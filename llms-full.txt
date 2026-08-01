@@ -42,6 +42,19 @@ The following elements are well-tested core functionality. Make changes with ext
 - **Note**: Accuracy gate that re-grounds claims against the sources. Only worthwhile with a capable model — a weak model rewrites rather than grounds. Keep the prompt strict about supported-claims-only and announced-vs-shipped.
 
 
+## 🔐 Contract-Frozen Signatures
+The following elements have frozen public API signatures. Internal implementation may be changed, but you MUST NOT alter method names, parameter types, parameter order, return types, or checked exceptions.
+
+### se.deversity.skill3.llm.ChatModel
+- **Reason**: The single seam every model-driven stage binds to — QueryPlanner, Synthesizer, Verifier and the self-correction Reviser all take this one interface, which is what lets one --llm-provider choice apply uniformly. Test fakes implement it directly, so changing the signature breaks every unit test that avoids a live model.
+
+### se.deversity.skill3.pipeline.PageFetcher
+- **Reason**: Fetch seam. Keeping page retrieval behind it is what lets extraction, date parsing and scoring be tested against HTML fixtures with no network, and it is the boundary at which --input-file replaces the network entirely.
+
+### se.deversity.skill3.pipeline.SearchClient
+- **Reason**: Discovery seam. BraveSearchClient (live) and FileCorpus (--input-file) both implement it, and isCuratedCorpus() is what tells the pipeline to skip LLM query planning. Removing the default method, or changing what it returns, silently re-enables planning for a corpus that is already the curated result set.
+
+
 ## 🧵 Thread-Safe by Design
 These elements are explicitly designed to be thread-safe via the named strategy. Preserve the synchronization invariant on every change.
 
@@ -56,6 +69,29 @@ The following types are immutable. Never introduce non-final fields, setters, or
 ### se.deversity.skill3.model.ContextBundle
 - Immutable type — never introduce non-final fields, setters, or mutating methods.
 - **Note**: Immutable record; the sources list is defensively copied in the compact constructor.
+
+
+## Architectural Boundary Constraints
+Strict architectural layering must be respected. No illegal references or imports.
+
+### se.deversity.skill3.model.Source
+- **Belongs to Layer**: model
+- **Prohibited References**: se.deversity.skill3.pipeline, se.deversity.skill3.llm, se.deversity.skill3.cli, se.deversity.skill3.skillspector, se.deversity.skill3.web, se.deversity.skill3.net
+
+
+## Schema & Serialization Safety
+Schema and serialization compatibility must be strictly preserved.
+
+### se.deversity.skill3.model.RunManifest
+- Schema and serialization safety. Restrict changing serialization formats, database fields, or API models without a migration path.
+
+
+## ♻️ Idempotency Guarantees
+These operations are idempotent — calling multiple times must produce the same result as calling once.
+
+### se.deversity.skill3.llm.SkillMdPostProcessor.render(java.lang.String,se.deversity.skill3.model.ContextBundle,java.time.LocalDate)
+- Idempotency guaranteed. Multiple invocations must produce the same result as a single invocation.
+- **Reason**: SelfCorrectionLoop re-runs render() on its own output, so a revised draft passes through repeatedly. Every guarantee here must converge: exactly one frontmatter block and exactly one provenance footer, no matter how many revision rounds ran.
 
 
 ## 🔐 Security-Critical Code
@@ -95,4 +131,27 @@ The following elements must remain pure functions without side effects or mutati
 
 ### se.deversity.skill3.llm.NameSanitizer.sanitize(java.lang.String)
 - **Requirement**: Mathematically pure function. No side effects.
+
+
+## Framework-Free Domain Entities
+The following elements are pure Domain Models. Do not import Spring, JPA/Hibernate, Jackson, or other framework packages.
+
+### se.deversity.skill3.model.Source
+- **Domain Boundary**: Framework-agnostic Domain Entity.
+
+
+## Load-Bearing Oddities
+These look wrong, redundant, or over-defensive and are deliberate. Refactoring is allowed only while the stated invariant survives.
+
+### se.deversity.skill3.pipeline.FileCorpus
+- This code is deliberate, not accidental.
+- **Invariant**: FileCorpus implements BOTH discovery seams — SearchClient and PageFetcher — and LearnCommand injects the same instance into both slots. That is the design, not a layering slip: it is what makes an offline --input-file run take the identical downstream path as a live Brave run, so the two modes cannot diverge.
+- **Breaks if changed**: the class is split into two collaborators, or either interface is dropped — offline runs then follow a different path from live ones and stop proving anything about the real pipeline
+- Edits are allowed as long as the invariant survives.
+
+### se.deversity.skill3.skillspector.InputVetter
+- This code is deliberate, not accidental.
+- **Invariant**: A quarantined source is dropped from the set handed to the synthesizer, but its finding is still recorded and still trips the run gate. Redaction runs FIRST and unconditionally, so a secret never reaches the model even when SkillSpector is unavailable — and when it is unavailable nothing is gated, because absence of findings is observed, never asserted.
+- **Breaks if changed**: quarantining is treated as resolving the finding, redaction is made conditional on the scanner being present, or a skipped scan is reported as clean
+- Edits are allowed as long as the invariant survives.
 <!-- VIBETAGS-END -->

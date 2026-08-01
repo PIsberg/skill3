@@ -70,6 +70,28 @@ Every package carries a `@NullMarked` `package-info.java` (JSpecify). Layering i
 enforced by an ArchUnit test: `model` depends on nothing internal, only the
 `Skill3App` root touches `cli`, and the sub-packages stay acyclic.
 
+## Generated structure diagrams
+
+The mermaid graph above is drawn by hand: it shows the pipeline as *intended*, including
+stages that are conceptual rather than a single class. The SVGs below are the other half —
+parsed straight out of `src/main/java` by [code-karta](https://github.com/PIsberg/codekarta),
+so they show the code as *written* and cannot quietly drift from it.
+
+Regenerate them with `./gradlew diagrams` and commit the result with the change that moved
+them. The task pins `code-karta-cli` from Maven Central, so it needs no local checkout, and
+the renderer is deterministic — a re-run with unchanged source produces byte-identical SVGs,
+which is what keeps them out of review diffs unless the structure really moved.
+
+| Diagram | What it answers |
+|---|---|
+| [<img src="diagrams/model-class-diagram.svg" width="380" alt="Class diagram of the model package: Source, ContextBundle, Cutoff, RunManifest"/>](diagrams/model-class-diagram.svg)<br/>**Data carriers** (`model`) | What flows between stages: `Source` and its scoring fields, the immutable `ContextBundle`, `Cutoff`, and the `RunManifest` written as `run.json`. |
+| [<img src="diagrams/llm-class-diagram.svg" width="380" alt="Class diagram of the llm package showing the ChatModel interface and its implementations"/>](diagrams/llm-class-diagram.svg)<br/>**The provider seam** (`llm`) | Why `--llm-provider` works: `LocalLlmClient` and `AnthropicChatModel` both implement the one `ChatModel` interface every model-driven stage takes. |
+| [<img src="diagrams/pipeline-class-diagram.svg" width="380" alt="Class diagram of the pipeline package: discovery and ingestion collaborators"/>](diagrams/pipeline-class-diagram.svg)<br/>**Discovery and ingestion** (`pipeline`) | The collaborators behind discovery, and the `SearchClient` / `PageFetcher` seams that `FileCorpus` implements *both* of for offline runs. |
+| [**Call graph**](diagrams/pipeline-sequence-diagram.svg)<br/>(`pipeline`, stitched across files) | The real call sequence through discovery and ingestion, resolved across files by symbol solving. Large — open it directly rather than inline. |
+
+There is deliberately no JPMS module diagram: Skill3 has no `module-info.java`, so it would
+have nothing to show.
+
 ## Key design decisions
 
 ### Skills are post-cutoff deltas, not primers

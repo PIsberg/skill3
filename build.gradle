@@ -12,10 +12,17 @@ plugins {
 group = 'se.deversity'
 version = '0.1.0'
 
-ext.vibetagsVersion = '1.0.0-RC1'
+ext.vibetagsVersion = '1.0.0-RC8'
+// code-karta renders the diagrams under docs/diagrams straight from this source tree.
+ext.codekartaVersion = '0.2.0'
 
 repositories {
     mavenCentral()
+}
+
+configurations {
+    // Tool-only: the diagram renderer must never reach a compile or runtime classpath.
+    codekarta
 }
 
 dependencies {
@@ -47,6 +54,9 @@ dependencies {
     // async-test-lib: JUnit 5 extension that stress-tests concurrent code (@AsyncTest).
     testImplementation 'se.deversity.async-test-lib:async-test-lib:1.7.0-RC1'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.1.0'
+
+    // code-karta CLI (shaded), used only by the `diagrams` task below.
+    codekarta "se.deversity.codekarta:code-karta-cli:${codekartaVersion}:all"
 }
 
 application {
@@ -147,4 +157,51 @@ tasks.named('spotbugsMain') {
         html { required = true }
         xml { required = true }
     }
+}
+
+// ---- Generated architecture diagrams (code-karta) ---------------------------
+//
+// The SVGs under docs/diagrams are parsed out of this source tree rather than drawn,
+// so they cannot quietly disagree with the code the way a hand-maintained diagram
+// does. The mermaid graph in docs/ARCHITECTURE.md is the complementary half: it shows
+// the pipeline as *intended*, these show it as *written*.
+//
+// Regenerate with `./gradlew diagrams` and commit the result alongside the change.
+def codekartaDiagrams = [
+        [task : 'diagramModelClasses',
+         input: 'src/main/java/se/deversity/skill3/model',
+         out  : 'model-class-diagram.svg',
+         extra: []],
+        [task : 'diagramPipelineClasses',
+         input: 'src/main/java/se/deversity/skill3/pipeline',
+         out  : 'pipeline-class-diagram.svg',
+         extra: []],
+        [task : 'diagramLlmClasses',
+         input: 'src/main/java/se/deversity/skill3/llm',
+         out  : 'llm-class-diagram.svg',
+         extra: []],
+        [task : 'diagramPipelineSequence',
+         input: 'src/main/java/se/deversity/skill3/pipeline',
+         out  : 'pipeline-sequence-diagram.svg',
+         extra: ['--sequence-only']],
+]
+
+def codekartaTasks = codekartaDiagrams.collect { d ->
+    tasks.register(d.task, JavaExec) {
+        group = 'documentation'
+        description = "Render docs/diagrams/${d.out} from ${d.input}"
+        classpath = configurations.codekarta
+        mainClass = 'se.deversity.codekarta.cli.KartaCli'
+        inputs.dir(file(d.input)).withPathSensitivity(PathSensitivity.RELATIVE)
+        outputs.file(layout.projectDirectory.file("docs/diagrams/${d.out}"))
+        args = ['--input', d.input,
+                '--output', 'docs/diagrams',
+                '--output-name', d.out] + d.extra
+    }
+}
+
+tasks.register('diagrams') {
+    group = 'documentation'
+    description = 'Regenerate every code-karta diagram under docs/diagrams'
+    dependsOn codekartaTasks
 }

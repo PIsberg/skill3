@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import se.deversity.vibetags.annotations.AILoadBearing;
 
 /**
  * Offline discovery from a user-curated input file — a no-network alternative to
@@ -48,6 +49,14 @@ import java.util.regex.Pattern;
  * file may start with a comment. A body line that needs to read literally
  * {@code === SOURCE ===} is the one thing the format cannot represent.
  */
+@AILoadBearing(
+        invariant = "FileCorpus implements BOTH discovery seams — SearchClient and PageFetcher — "
+                + "and LearnCommand injects the same instance into both slots. That is the design, "
+                + "not a layering slip: it is what makes an offline --input-file run take the "
+                + "identical downstream path as a live Brave run, so the two modes cannot diverge.",
+        breaksIf = "the class is split into two collaborators, or either interface is dropped — "
+                + "offline runs then follow a different path from live ones and stop proving anything "
+                + "about the real pipeline")
 public final class FileCorpus implements SearchClient, PageFetcher {
 
     /** A line that, trimmed, equals this starts a new document. */

@@ -12,7 +12,7 @@ plugins {
 group = 'se.deversity'
 version = '0.1.0'
 
-ext.vibetagsVersion = '1.0.0-RC8'
+ext.vibetagsVersion = '1.0.0-RC10'
 // code-karta renders the diagrams under docs/diagrams straight from this source tree.
 ext.codekartaVersion = '0.2.0'
 

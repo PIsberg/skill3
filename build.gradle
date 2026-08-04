@@ -52,7 +52,7 @@ dependencies {
     testImplementation 'org.mockito:mockito-junit-jupiter:5.23.0'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.2'
     // async-test-lib: JUnit 5 extension that stress-tests concurrent code (@AsyncTest).
-    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.7.0-RC4'
+    testImplementation 'se.deversity.async-test-lib:async-test-lib:1.7.0-RC8'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.1.0'
 
     // code-karta CLI (shaded), used only by the `diagrams` task below.

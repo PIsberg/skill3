@@ -1,7 +1,6 @@
 package se.deversity.skill3;
 
 import se.deversity.asynctest.AsyncTest;
-import se.deversity.asynctest.DetectorType;
 import se.deversity.skill3.llm.NameSanitizer;
 import se.deversity.skill3.llm.SkillMdPostProcessor;
 import se.deversity.skill3.model.ContextBundle;
@@ -35,9 +34,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * tests hammer each from many threads at once to prove (or disprove) thread-safety now, so a
  * future parallel retrieval stage can rely on it.
  *
- * <p>{@link DetectorType#UNCOMMITTED_CHANGES} is excluded everywhere: it is an environmental
- * check (it flags a dirty Git working tree at test end), not a property of the code under test,
- * and this project is developed with an intentionally dirty tree.
+ * <p>These carried {@code excludes = DetectorType.UNCOMMITTED_CHANGES} to silence a detector that
+ * flagged this project's intentionally dirty Git tree. async-test-lib 1.7.3 removed that detector
+ * outright — it checked the environment rather than the code under test — so the exclusion is gone
+ * with it. Nothing else needs to change: no other detector inspects the working tree.
  */
 class ConcurrencySafetyTest {
 
@@ -51,13 +51,13 @@ class ConcurrencySafetyTest {
     /** Shared across all worker threads on purpose: resolve() reads the static cutoff table. */
     private final CutoffResolver cutoffResolver = new CutoffResolver();
 
-    @AsyncTest(threads = 8, invocations = 100, excludes = DetectorType.UNCOMMITTED_CHANGES)
+    @AsyncTest(threads = 8, invocations = 100)
     void nameSanitizerIsStatelessUnderConcurrency() {
         assertEquals("learned-skill", NameSanitizer.sanitize("Claude"));
         assertEquals("model-context-protocol", NameSanitizer.sanitize("Model Context Protocol!"));
     }
 
-    @AsyncTest(threads = 8, invocations = 100, excludes = DetectorType.UNCOMMITTED_CHANGES)
+    @AsyncTest(threads = 8, invocations = 100)
     void skillMdRenderUsesStaticPatternsThreadSafely() {
         String raw = "---\nname: mcp\ndescription: A real one-sentence description of the skill.\n---\n"
                 + "## Overview\n\nMCP connects agents to external tools over one integration.";
@@ -66,7 +66,7 @@ class ConcurrencySafetyTest {
         assertTrue(out.contains("## Overview"));
     }
 
-    @AsyncTest(threads = 8, invocations = 100, excludes = DetectorType.UNCOMMITTED_CHANGES)
+    @AsyncTest(threads = 8, invocations = 100)
     void skillSpectorReportSharesObjectMapperSafely() {
         String json = "{\"issues\":[{\"category\":\"X\",\"severity\":\"LOW\","
                 + "\"message\":\"m\",\"file\":\"f\",\"line\":1}]}";
@@ -74,13 +74,13 @@ class ConcurrencySafetyTest {
         assertEquals(1, report.findings().size());
     }
 
-    @AsyncTest(threads = 8, invocations = 100, excludes = DetectorType.UNCOMMITTED_CHANGES)
+    @AsyncTest(threads = 8, invocations = 100)
     void cutoffResolverReadsStaticTableConcurrently() {
         Cutoff resolved = cutoffResolver.resolve("claude-opus-4-8", null);
         assertEquals("2026-01", resolved.iso());
     }
 
-    @AsyncTest(threads = 8, invocations = 100, excludes = DetectorType.UNCOMMITTED_CHANGES)
+    @AsyncTest(threads = 8, invocations = 100)
     void authorityScorerScoresConcurrently() {
         assertEquals(1.0, authorityScorer.score("https://modelcontextprotocol.io/spec"));
         assertEquals(0.2, authorityScorer.score("https://medium.com/@someone/post"));
@@ -95,8 +95,7 @@ class ConcurrencySafetyTest {
      * stderr-drain thread. Driven here with a harmless {@code echo} so the stress runner can
      * watch process I/O, thread, and resource handling across many concurrent invocations.
      */
-    @AsyncTest(threads = 4, invocations = 10, timeoutMs = 10000,
-            excludes = DetectorType.UNCOMMITTED_CHANGES)
+    @AsyncTest(threads = 4, invocations = 10, timeoutMs = 10000)
     void skillSpectorRunnerManagesProcessResourcesCleanly() throws Exception {
         String exe = WINDOWS ? "cmd" : "sh";
         List<String> args = WINDOWS ? List.of("/c", "echo", "{}") : List.of("-c", "echo {}");
@@ -109,8 +108,7 @@ class ConcurrencySafetyTest {
      * virtual thread. Driven here by many concurrent callers (each spinning up its own executor) to
      * prove the fan-out returns every source, in input order, with no loss/duplication/corruption.
      */
-    @AsyncTest(threads = 6, invocations = 50, timeoutMs = 10000,
-            excludes = DetectorType.UNCOMMITTED_CHANGES)
+    @AsyncTest(threads = 6, invocations = 50, timeoutMs = 10000)
     void parallelRetrievalIsConsistentUnderConcurrency() throws Exception {
         SearchClient search = (q, n) -> List.of(
                 "https://a.example/doc", "https://b.example/doc", "https://github.com/org/repo");
@@ -128,7 +126,7 @@ class ConcurrencySafetyTest {
         assertEquals("https://github.com/org/repo", sources.get(2).url);
     }
 
-    @AsyncTest(threads = 8, invocations = 100, excludes = DetectorType.UNCOMMITTED_CHANGES)
+    @AsyncTest(threads = 8, invocations = 100)
     void contextBundleIsSafelyPublishedAndImmutable() {
         Source s = new Source("https://modelcontextprotocol.io");
         ContextBundle bundle = new ContextBundle(
